@@ -22,8 +22,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "wacrm",
-    template: "%s — wacrm",
+    default: "Balli CRM",
+    template: "%s — Balli CRM",
   },
   description: "Self-hostable CRM template for WhatsApp.",
   robots: {
@@ -31,7 +31,9 @@ export const metadata: Metadata = {
     follow: false,
   },
   icons: {
-    icon: [{ url: "/icon" }],
+    icon: "/brand/balli.jpg",
+    apple: "/brand/balli.jpg",
+    shortcut: "/brand/balli.jpg",
   },
   formatDetection: {
     email: false,
@@ -106,6 +108,7 @@ export default async function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
         />
+        <link rel="manifest" href="/manifest.json" />
       </head>
       <body className="min-h-full bg-background text-foreground font-sans">
         <NextIntlClientProvider messages={messages} locale={locale}>

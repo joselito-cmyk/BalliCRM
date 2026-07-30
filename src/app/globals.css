@@ -175,6 +175,20 @@ html[data-theme="emerald"] {
   --sidebar-ring: oklch(0.62 0.16 162);
 }
 
+html[data-theme="balli"] {
+  --primary: #0E1321;
+  --primary-foreground: #ffffff;
+  --primary-hover: #1A2433;
+  --primary-soft: rgba(14,19,33,0.12);
+  --primary-soft-2: rgba(14,19,33,0.22);
+  --ring: #0E1321;
+  --chart-1: #0E1321;
+  --chart-2: #2B3750;
+  --sidebar-primary: #0E1321;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-ring: #0E1321;
+}
+
 html[data-theme="cobalt"] {
   --primary: oklch(0.585 0.2 254);
   --primary-foreground: oklch(0.985 0 0);

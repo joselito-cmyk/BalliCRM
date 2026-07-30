@@ -68,9 +68,12 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
-          {t(titleKey as string)}
-        </h1>
+        <Link href="/dashboard" className="flex items-center gap-2">
+          <img src="/brand/balli.jpg" alt="Balli CRM" className="h-7 w-7 object-contain" />
+          <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
+            {t(titleKey as string)}
+          </h1>
+        </Link>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">

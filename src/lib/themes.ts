@@ -16,6 +16,7 @@
 export const THEME_IDS = [
   "violet",
   "emerald",
+  "balli",
   "cobalt",
   "amber",
   "rose",
@@ -23,7 +24,7 @@ export const THEME_IDS = [
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-export const DEFAULT_THEME: ThemeId = "violet";
+export const DEFAULT_THEME: ThemeId = "balli";
 
 export const STORAGE_KEY = "wacrm.theme";
 
@@ -78,6 +79,12 @@ export const THEMES: ReadonlyArray<ThemeMeta> = [
     name: "Emerald",
     tagline: "Growth-coded, nods at messaging without copying WhatsApp green.",
     swatch: "oklch(0.62 0.16 162)",
+  },
+  {
+    id: "balli",
+    name: "Balli",
+    tagline: "Brand theme — Balli blue.",
+    swatch: "#315CFF",
   },
   {
     id: "cobalt",
