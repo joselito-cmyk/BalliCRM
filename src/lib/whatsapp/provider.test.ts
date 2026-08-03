@@ -123,4 +123,22 @@ describe('provider.sendMedia', () => {
 
     expect(result).toEqual({ messageId: 'wamid.456' });
   });
+
+  it('throws a clear error when a meta config is missing its credentials', async () => {
+    const config: WhatsAppConfig = { ...BASE_CONFIG, provider: 'meta' };
+
+    await expect(
+      sendMedia(config, { to: '1', kind: 'image', link: 'https://cdn.test/x.jpg' }),
+    ).rejects.toThrow(/Meta WhatsApp not configured/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('throws a clear error when a uazapi config is missing its session', async () => {
+    const config: WhatsAppConfig = { ...BASE_CONFIG, provider: 'uazapi' };
+
+    await expect(
+      sendMedia(config, { to: '1', kind: 'image', link: 'https://cdn.test/x.jpg' }),
+    ).rejects.toThrow(/UAZAPI session not configured/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

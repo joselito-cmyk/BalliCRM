@@ -138,6 +138,14 @@ describe('uazapi-api', () => {
       });
       expect(result).toEqual({ messageId: 'true_5521989848442@c.us_ABC123' });
     });
+
+    it('throws when a 2xx response is missing messageId', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ result: 200 }));
+
+      await expect(
+        sendText({ session: 'acct_abc', sessionkey: 'key_abc', number: '5521989848442', text: 'oi' }),
+      ).rejects.toThrow(/no messageId/);
+    });
   });
 
   describe('sendMedia', () => {
@@ -181,6 +189,20 @@ describe('uazapi-api', () => {
         sendMedia({ session: 's', sessionkey: 'k', number: 'n', kind: 'image', path: '' }),
       ).rejects.toThrow(/requires a path/);
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('throws when a 2xx response is missing messageId', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ result: 200 }));
+
+      await expect(
+        sendMedia({
+          session: 'acct_abc',
+          sessionkey: 'key_abc',
+          number: '5521989848442',
+          kind: 'image',
+          path: 'https://cdn.test/photo.jpg',
+        }),
+      ).rejects.toThrow(/no messageId/);
     });
   });
 

@@ -99,6 +99,9 @@ export async function startSession(args: StartSessionArgs): Promise<StartSession
     await throwUazapiError(response, `UAZAPI error: ${response.status}`)
   }
   const data = await response.json()
+  if (typeof data?.state !== 'string' || typeof data?.status !== 'string') {
+    throw new Error('UAZAPI returned an unexpected response shape.')
+  }
   return { state: data.state, status: data.status }
 }
 
@@ -121,7 +124,9 @@ export interface QrCodeResult {
  * "Obtém o QR Code (png em bytes) da sessão inicializada." Note
  * `sessionkey` here is a query param, not a header — this is the one
  * UAZAPI endpoint that departs from the header convention every other
- * endpoint uses.
+ * endpoint uses. Because `sessionkey` is bearer-equivalent for every
+ * endpoint after /start, this URL (query string included) must never
+ * be logged or surfaced in a client-facing error message.
  */
 export async function getQrCode(args: GetQrCodeArgs): Promise<QrCodeResult> {
   const { session, sessionkey } = args
@@ -159,6 +164,9 @@ export async function getSessionStatus(args: GetSessionStatusArgs): Promise<Sess
     await throwUazapiError(response, `UAZAPI error: ${response.status}`)
   }
   const data = await response.json()
+  if (typeof data?.state !== 'string' || typeof data?.status !== 'string') {
+    throw new Error('UAZAPI returned an unexpected response shape.')
+  }
   return { status: data.status, state: data.state }
 }
 
@@ -203,6 +211,9 @@ export async function sendText(args: UazapiSendTextArgs): Promise<UazapiSendResu
     await throwUazapiError(response, `UAZAPI error: ${response.status}`)
   }
   const data = await response.json()
+  if (typeof data?.messageId !== 'string') {
+    throw new Error('UAZAPI accepted the send but returned no messageId.')
+  }
   return { messageId: data.messageId }
 }
 
@@ -243,5 +254,8 @@ export async function sendMedia(args: UazapiSendMediaArgs): Promise<UazapiSendRe
     await throwUazapiError(response, `UAZAPI error: ${response.status}`)
   }
   const data = await response.json()
+  if (typeof data?.messageId !== 'string') {
+    throw new Error('UAZAPI accepted the send but returned no messageId.')
+  }
   return { messageId: data.messageId }
 }
