@@ -1,17 +1,17 @@
 /**
- * UAZAPI (unofficial WhatsApp API) helpers — QR-code session client.
+ * UAZAPI (WhatsApp não oficial) — client HTTP da API v2 (uazapiGO).
  *
- * Named-params objects, mirroring meta-api.ts, for the same reason: a
- * typo in positional args surfaces as a silent wrong-argument bug
- * instead of a TypeScript error.
+ * Contratos verificados ao vivo contra balligroup.uazapi.com em
+ * 2026-08-04; ver o apêndice de
+ * docs/superpowers/specs/2026-08-03-uazapi-provider-design.md. Onde a
+ * documentação pública da UAZAPI divergir, vale o apêndice — ela já
+ * errou em cinco pontos.
  *
- * Auth model (confirmed against the UAZAPI Postman collection):
- * `apitoken` — the paid subscription's account-level token — is
- * required ONLY on /start, to prove the caller owns the subscription
- * when creating a session. Every other endpoint authenticates with
- * just the per-session `sessionkey` header. There is no request
- * signing; `sessionkey` carries the same trust level as a bearer
- * token for everything after /start.
+ * Autenticação: header `token` (o Instance Token). O `admintoken`, que
+ * controla a assinatura inteira, NÃO é usado aqui: o app não cria nem
+ * apaga instâncias — isso é feito no painel da UAZAPI.
+ *
+ * Client puro: nenhum acesso a banco, nenhuma decisão de negócio.
  */
 
 import type { MediaKind } from './meta-api'
@@ -19,243 +19,252 @@ import type { MediaKind } from './meta-api'
 export type { MediaKind }
 
 const UAZAPI_ENDPOINT = process.env.UAZAPI_ENDPOINT!
-const UAZAPI_TOKEN = process.env.UAZAPI_TOKEN!
+
+// ============================================================
+// Tipos
+// ============================================================
+
+/**
+ * O objeto `instance` que vem em /instance/status e /instance/connect.
+ *
+ * Só os campos que usamos são tipados — a UAZAPI devolve dezenas
+ * (chatbot nativo, proxy, adminFields) que não nos interessam.
+ *
+ * Os campos marcados "só quando conectado" chegam vazios ou ausentes
+ * enquanto a instância está disconnected/connecting: o objeto muda de
+ * forma entre os estados.
+ */
+export interface UazapiInstance {
+  id: string
+  status: string
+  /** Data URI completo (`data:image/png;base64,…`) enquanto connecting; '' fora disso. */
+  qrcode: string
+  /** Rótulo definido no painel na criação. */
+  name: string
+  /** Só quando conectado: número da instância, apenas dígitos. */
+  owner: string
+  profileName: string
+  profilePicUrl: string
+  isBusiness: boolean
+  lastDisconnect: string
+  lastDisconnectReason: string
+  msg_delay_min: number
+  msg_delay_max: number
+}
+
+export interface UazapiConnectionStatus {
+  connected: boolean
+  loggedIn: boolean
+  jid: string | null
+  /** Ausente na resposta do /instance/connect; presente no /instance/status. */
+  resetting?: boolean
+}
+
+export interface UazapiInstanceState {
+  instance: UazapiInstance
+  status: UazapiConnectionStatus
+}
 
 export interface UazapiSendResult {
   messageId: string
 }
 
+// ============================================================
+// Infra
+// ============================================================
+
 interface UazapiErrorBody {
   message?: string
   error?: string
+  response?: string
 }
 
 /**
- * The Postman collection documents the HTTP status codes UAZAPI uses
- * (400/401/404/500) but never shows an error response body. This
- * checks the field names an Express JSON-error middleware commonly
- * uses and falls back to the status code, so a real error still
- * surfaces something useful even if the exact shape turns out to
- * differ once tested against a live session.
+ * A UAZAPI não documenta o corpo de erro. Observado ao vivo:
+ * `Invalid AdminToken Header` como texto puro em alguns casos, JSON em
+ * outros. Tentamos os três campos que ela usa e caímos no status code.
+ *
+ * Nunca inclui o token na mensagem: ela sobe até a UI.
  */
 async function throwUazapiError(response: Response, fallback: string): Promise<never> {
   let message = fallback
   try {
     const data = (await response.json()) as UazapiErrorBody
-    if (typeof data.message === 'string') message = data.message
-    else if (typeof data.error === 'string') message = data.error
+    const found = data.message ?? data.error ?? data.response
+    if (typeof found === 'string' && found.length > 0) message = found
   } catch {
-    // response body wasn't JSON — keep the fallback
+    // corpo não era JSON — mantém o fallback
   }
   throw new Error(message)
 }
 
-// ============================================================
-// Session lifecycle
-// ============================================================
-
-export interface UazapiWebhooks {
-  connect: string
-  qrcode: string
-  status: string
-  message: string
-}
-
-export interface StartSessionArgs {
-  /** Our own generated session id — never user input. */
-  session: string
-  sessionkey: string
-  webhooks: UazapiWebhooks
-}
-
-export interface StartSessionResult {
-  state: string
-  status: string
-}
-
-/**
- * Starts a session, triggering QR-code generation on UAZAPI's side.
- * Idempotent in practice: calling /start again on an existing session
- * is how UAZAPI issues a fresh QR code after the previous one expired.
- */
-export async function startSession(args: StartSessionArgs): Promise<StartSessionResult> {
-  const { session, sessionkey, webhooks } = args
-  const response = await fetch(`${UAZAPI_ENDPOINT}/start`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      apitoken: UAZAPI_TOKEN,
-      sessionkey,
-    },
-    body: JSON.stringify({
-      session,
-      wh_connect: webhooks.connect,
-      wh_qrcode: webhooks.qrcode,
-      wh_status: webhooks.status,
-      wh_message: webhooks.message,
-    }),
+async function uazapiFetch(
+  path: string,
+  token: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<unknown> {
+  const method = init.method ?? 'GET'
+  const response = await fetch(`${UAZAPI_ENDPOINT}${path}`, {
+    method,
+    headers: { 'content-type': 'application/json', token },
+    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   })
   if (!response.ok) {
     await throwUazapiError(response, `UAZAPI error: ${response.status}`)
   }
-  const data = await response.json()
-  if (typeof data?.state !== 'string' || typeof data?.status !== 'string') {
-    throw new Error('UAZAPI returned an unexpected response shape.')
-  }
-  return { state: data.state, status: data.status }
-}
-
-export interface GetQrCodeArgs {
-  session: string
-  sessionkey: string
-}
-
-export interface QrCodeResult {
-  /** Ready for an <img src="..."> — see re-encoding note below. */
-  dataUri: string
+  return response.json()
 }
 
 /**
- * Fetches the current QR code and re-encodes it as a data URI.
+ * Parser único para /instance/status e /instance/connect, que
+ * compartilham a forma `{ instance, status }`.
  *
- * Unlike the `wh_qrcode` webhook push (already a `data:image/...`
- * string per the docs' payload example), this endpoint returns the
- * raw image bytes — confirmed by the collection's own description:
- * "Obtém o QR Code (png em bytes) da sessão inicializada." Note
- * `sessionkey` here is a query param, not a header — this is the one
- * UAZAPI endpoint that departs from the header convention every other
- * endpoint uses. Because `sessionkey` is bearer-equivalent for every
- * endpoint after /start, this URL (query string included) must never
- * be logged or surfaced in a client-facing error message.
+ * Lê SEMPRE o objeto `status` aninhado. O /connect também expõe
+ * `connected`/`loggedIn` na raiz, mas o /status não — usar os campos
+ * de topo daria `undefined` silencioso num dos dois caminhos.
  */
-export async function getQrCode(args: GetQrCodeArgs): Promise<QrCodeResult> {
-  const { session, sessionkey } = args
-  const url = `${UAZAPI_ENDPOINT}/getQrCode?session=${encodeURIComponent(session)}&sessionkey=${encodeURIComponent(sessionkey)}`
-  const response = await fetch(url, {
-    headers: { 'content-type': 'application/json' },
-  })
-  if (!response.ok) {
-    await throwUazapiError(response, `UAZAPI error: ${response.status}`)
+function parseInstanceState(data: unknown, context: string): UazapiInstanceState {
+  const d = data as { instance?: Record<string, unknown>; status?: Record<string, unknown> }
+  if (!d?.instance || typeof d.instance !== 'object' || !d.status || typeof d.status !== 'object') {
+    throw new Error(`UAZAPI returned an unexpected response shape for ${context}.`)
   }
-  const bytes = await response.arrayBuffer()
-  const base64 = Buffer.from(bytes).toString('base64')
-  return { dataUri: `data:image/png;base64,${base64}` }
-}
+  const i = d.instance
+  const s = d.status
 
-export interface GetSessionStatusArgs {
-  session: string
-  sessionkey: string
-}
-
-export interface SessionStatusResult {
-  /** Raw UAZAPI status string (e.g. "notLogged", "inChat", "disconnectedMobile"). Persisted verbatim — see design doc. */
-  status: string
-  state: string
-}
-
-export async function getSessionStatus(args: GetSessionStatusArgs): Promise<SessionStatusResult> {
-  const { session, sessionkey } = args
-  const response = await fetch(`${UAZAPI_ENDPOINT}/getSessionStatus`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', sessionkey },
-    body: JSON.stringify({ session }),
-  })
-  if (!response.ok) {
-    await throwUazapiError(response, `UAZAPI error: ${response.status}`)
+  if (typeof s.connected !== 'boolean' || typeof s.loggedIn !== 'boolean') {
+    throw new Error(`UAZAPI returned an unexpected response shape for ${context}.`)
   }
-  const data = await response.json()
-  if (typeof data?.state !== 'string' || typeof data?.status !== 'string') {
-    throw new Error('UAZAPI returned an unexpected response shape.')
-  }
-  return { status: data.status, state: data.state }
-}
 
-export interface CloseSessionArgs {
-  session: string
-  sessionkey: string
-}
+  const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+  const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
 
-/** Disconnects WhatsApp from the session without deleting the session server-side. */
-export async function closeSession(args: CloseSessionArgs): Promise<void> {
-  const { session, sessionkey } = args
-  const response = await fetch(`${UAZAPI_ENDPOINT}/closeSession`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', sessionkey },
-    body: JSON.stringify({ session }),
-  })
-  if (!response.ok) {
-    await throwUazapiError(response, `UAZAPI error: ${response.status}`)
+  return {
+    instance: {
+      id: str(i.id),
+      status: str(i.status),
+      qrcode: str(i.qrcode),
+      name: str(i.name),
+      owner: str(i.owner),
+      profileName: str(i.profileName),
+      profilePicUrl: str(i.profilePicUrl),
+      isBusiness: i.isBusiness === true,
+      lastDisconnect: str(i.lastDisconnect),
+      lastDisconnectReason: str(i.lastDisconnectReason),
+      msg_delay_min: num(i.msg_delay_min),
+      msg_delay_max: num(i.msg_delay_max),
+    },
+    status: {
+      connected: s.connected,
+      loggedIn: s.loggedIn,
+      jid: typeof s.jid === 'string' ? s.jid : null,
+      ...(typeof s.resetting === 'boolean' ? { resetting: s.resetting } : {}),
+    },
   }
 }
 
 // ============================================================
-// Sending
+// Ciclo de vida da instância
 // ============================================================
 
-export interface UazapiSendTextArgs {
-  session: string
-  sessionkey: string
-  /** Recipient in any UAZAPI-accepted format (with/without +, with/without the trunk 9). */
+export interface InstanceTokenArgs {
+  /** Instance Token cru (já decifrado). */
+  token: string
+}
+
+/**
+ * Estado atual da instância — inclui o QR vigente quando connecting.
+ *
+ * É também o endpoint de validação: um token inválido responde 401, o
+ * que torna esta a chamada certa para conferir um token colado antes
+ * de gravá-lo.
+ */
+export async function getInstanceStatus(args: InstanceTokenArgs): Promise<UazapiInstanceState> {
+  const data = await uazapiFetch('/instance/status', args.token)
+  return parseInstanceState(data, 'getInstanceStatus')
+}
+
+/**
+ * Inicia a conexão: status vai para "connecting" e o primeiro QR é
+ * gerado.
+ *
+ * Chamado UMA vez por tentativa. Não existe "renovar QR" — a UAZAPI
+ * rotaciona sozinha e o /instance/status entrega o vigente (medido:
+ * o QR mudou entre duas leituras separadas por 22s, sem chamada
+ * nossa). A janela expira sozinha depois de alguns minutos, voltando a
+ * "disconnected" com lastDisconnectReason "QR Code timeout".
+ */
+export async function connectInstance(args: InstanceTokenArgs): Promise<UazapiInstanceState> {
+  const data = await uazapiFetch('/instance/connect', args.token, { method: 'POST', body: {} })
+  return parseInstanceState(data, 'connectInstance')
+}
+
+/**
+ * Desloga o telefone mantendo a instância viva (dá para reconectar
+ * lendo um QR novo).
+ *
+ * Deliberadamente NÃO existe um deleteInstance() aqui: DELETE
+ * /instance apagaria a instância e liberaria a única vaga da
+ * assinatura. Isso é operação de painel, não de aplicação.
+ */
+export async function disconnectInstance(args: InstanceTokenArgs): Promise<void> {
+  await uazapiFetch('/instance/disconnect', args.token, { method: 'POST', body: {} })
+}
+
+// ============================================================
+// Envio (usado a partir da Fase 3)
+// ============================================================
+
+/**
+ * A UAZAPI não documenta o corpo de sucesso do /send/*, e ele não foi
+ * verificado ao vivo (exigiria enviar uma mensagem real). Aceitamos os
+ * dois nomes plausíveis; a Fase 3 confirma e simplifica.
+ */
+function parseSendResult(data: unknown): UazapiSendResult {
+  const d = data as { messageid?: unknown; messageId?: unknown; id?: unknown }
+  const id = d?.messageid ?? d?.messageId ?? d?.id
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new Error('UAZAPI accepted the send but returned no message id.')
+  }
+  return { messageId: id }
+}
+
+export interface UazapiSendTextArgs extends InstanceTokenArgs {
+  /** Só dígitos, com código do país. Ex: '5521984379771'. */
   number: string
   text: string
 }
 
 export async function sendText(args: UazapiSendTextArgs): Promise<UazapiSendResult> {
-  const { session, sessionkey, number, text } = args
-  const response = await fetch(`${UAZAPI_ENDPOINT}/sendText`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', sessionkey },
-    body: JSON.stringify({ session, number, text }),
-  })
-  if (!response.ok) {
-    await throwUazapiError(response, `UAZAPI error: ${response.status}`)
-  }
-  const data = await response.json()
-  if (typeof data?.messageId !== 'string') {
-    throw new Error('UAZAPI accepted the send but returned no messageId.')
-  }
-  return { messageId: data.messageId }
+  const { token, number, text } = args
+  const data = await uazapiFetch('/send/text', token, { method: 'POST', body: { number, text } })
+  return parseSendResult(data)
 }
 
-const MEDIA_ENDPOINT: Record<MediaKind, string> = {
-  image: 'sendImage',
-  video: 'sendVideo',
-  audio: 'sendAudio',
-  document: 'sendFile',
+/**
+ * Na v2 os quatro tipos de mídia passam por um endpoint só; o campo
+ * `type` discrimina. `file` aceita URL pública — que é exatamente o
+ * que já guardamos no Supabase Storage — ou base64.
+ */
+const MEDIA_TYPE: Record<MediaKind, string> = {
+  image: 'image',
+  video: 'video',
+  audio: 'audio',
+  document: 'document',
 }
 
-export interface UazapiSendMediaArgs {
-  session: string
-  sessionkey: string
+export interface UazapiSendMediaArgs extends InstanceTokenArgs {
   number: string
   kind: MediaKind
-  /** Public URL UAZAPI fetches at send time. */
+  /** URL pública que a UAZAPI busca na hora do envio. */
   path: string
   caption?: string
 }
 
-/**
- * Sends image, video, audio, or document via a public URL. All four
- * UAZAPI media endpoints share the exact same body shape
- * ({session, number, caption, path}) — only the path segment differs
- * by kind (see MEDIA_ENDPOINT).
- */
 export async function sendMedia(args: UazapiSendMediaArgs): Promise<UazapiSendResult> {
-  const { session, sessionkey, number, kind, path, caption } = args
+  const { token, number, kind, path, caption } = args
   if (!path) throw new Error('sendMedia requires a path.')
-  const body: Record<string, unknown> = { session, number, path }
-  if (caption) body.caption = caption
-  const response = await fetch(`${UAZAPI_ENDPOINT}/${MEDIA_ENDPOINT[kind]}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', sessionkey },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    await throwUazapiError(response, `UAZAPI error: ${response.status}`)
-  }
-  const data = await response.json()
-  if (typeof data?.messageId !== 'string') {
-    throw new Error('UAZAPI accepted the send but returned no messageId.')
-  }
-  return { messageId: data.messageId }
+  const body: Record<string, unknown> = { number, type: MEDIA_TYPE[kind], file: path }
+  if (caption) body.text = caption
+  const data = await uazapiFetch('/send/media', token, { method: 'POST', body })
+  return parseSendResult(data)
 }
