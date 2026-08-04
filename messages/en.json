@@ -1366,8 +1366,8 @@
       "documentHint": " Recommended: PDF, ≤100 MB.",
       
       "bodyText": "Body Text",
-      "bodyPlaceholder": "Hello {{1}}, your order {{2}} is confirmed.",
-      "bodyHint": "Use {{1}}, {{2}} for variables (must be contiguous starting at {{1}}).",
+      "bodyPlaceholder": "Hello '{{1}}', your order '{{2}}' is confirmed.",
+      "bodyHint": "Use '{{1}}', '{{2}}' for variables (must be contiguous starting at '{{1}}').",
       "sampleValues": "Sample values (Meta uses these to review your template)",
       "sampleAria": "Sample value for body variable {var}",
       "samplePlaceholder": "Sample for {var}",

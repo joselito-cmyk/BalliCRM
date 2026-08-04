@@ -1365,9 +1365,9 @@
       "documentHint": " 권장: PDF, 100MB 이하.",
 
       "bodyText": "본문 텍스트",
-      "bodyPlaceholder": "안녕하세요 {{1}}님, 주문 {{2}}이(가) 확정되었습니다.",
+      "bodyPlaceholder": "안녕하세요 '{{1}}'님, 주문 '{{2}}'이(가) 확정되었습니다.",
       "sampleValues": "샘플 값 (Meta가 템플릿 검토에 사용합니다)",
-      "bodyHint": "변수에는 {{1}}, {{2}}를 사용하세요 ({{1}}부터 연속되어야 합니다).",
+      "bodyHint": "변수에는 '{{1}}', '{{2}}'를 사용하세요 ('{{1}}'부터 연속되어야 합니다).",
       "sampleAria": "본문 변수 {var}의 샘플 값",
       "samplePlaceholder": "{var}의 샘플",
 
