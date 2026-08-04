@@ -1491,7 +1491,31 @@
       "step4_3": "위의 <strong class=\"text-foreground\">웹훅 콜백 URL</strong>을 붙여넣기",
       "step4_4": "여기서 설정한 것과 동일한 <strong class=\"text-foreground\">인증 토큰</strong>을 입력",
       "step4_5": "\"messages\" 웹훅 필드를 구독",
-      "metaDocs": "Meta WhatsApp API 문서"
+      "metaDocs": "Meta WhatsApp API 문서",
+      "providerMeta": "공식 API (Meta)",
+      "providerUazapi": "QR 코드 (UAZAPI)",
+      "uazapi": {
+        "title": "QR 코드 연결",
+        "description": "Meta 공식 API 없이 QR 코드를 스캔하여 WhatsApp 번호를 연결합니다.",
+        "tokenLabel": "인스턴스 토큰",
+        "tokenPlaceholder": "인스턴스 토큰을 붙여넣으세요",
+        "tokenHelp": "UAZAPI 패널에서 인스턴스를 만들고 해당 인스턴스 토큰을 여기에 붙여넣으세요.",
+        "save": "토큰 저장",
+        "connect": "연결",
+        "disconnect": "연결 해제",
+        "forget": "설정 삭제",
+        "forgetConfirm": "CRM에서 인스턴스를 제거합니다. 인스턴스 자체는 UAZAPI 패널에 그대로 남습니다. 계속하시겠습니까?",
+        "statusConnected": "연결됨",
+        "statusDisconnected": "연결 해제됨",
+        "instanceLabel": "인스턴스: {name}",
+        "scanInstructions": "휴대폰에서: WhatsApp → 연결된 기기 → 기기 연결.",
+        "qrRotates": "코드는 자동으로 갱신됩니다. 이 화면을 열어 두세요.",
+        "qrAlt": "WhatsApp 연결용 QR 코드",
+        "qrExpired": "QR 코드가 스캔되기 전에 만료되었습니다. 연결을 클릭하여 새로 생성하세요.",
+        "tokenCorrupted": "저장된 토큰을 현재 ENCRYPTION_KEY로 복호화할 수 없습니다. 설정을 삭제하고 토큰을 다시 붙여넣으세요.",
+        "errorSaving": "토큰을 저장할 수 없습니다.",
+        "retry": "다시 시도"
+      }
     },
     "sections": {
       "overview": "개요",

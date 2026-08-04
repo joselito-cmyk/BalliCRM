@@ -1482,7 +1482,31 @@
       "step4_3": "Cole a <strong>URL de callback do webhook</strong> acima",
       "step4_4": "Digite o mesmo <strong>token de verificação</strong> definido aqui",
       "step4_5": "Inscreva-se ao campo de webhook \"messages\"",
-      "metaDocs": "Documentação da API do WhatsApp na Meta"
+      "metaDocs": "Documentação da API do WhatsApp na Meta",
+      "providerMeta": "API Oficial (Meta)",
+      "providerUazapi": "QR Code (UAZAPI)",
+      "uazapi": {
+        "title": "Conexão por QR Code",
+        "description": "Conecte um número de WhatsApp escaneando um QR Code, sem precisar da API oficial da Meta.",
+        "tokenLabel": "Instance Token",
+        "tokenPlaceholder": "Cole o token da instância",
+        "tokenHelp": "Crie uma instância no painel da UAZAPI e cole aqui o Instance Token dela.",
+        "save": "Salvar token",
+        "connect": "Conectar",
+        "disconnect": "Desconectar",
+        "forget": "Remover configuração",
+        "forgetConfirm": "Isso remove a instância do CRM. A instância continua existindo no painel da UAZAPI. Continuar?",
+        "statusConnected": "Conectado",
+        "statusDisconnected": "Desconectado",
+        "instanceLabel": "Instância: {name}",
+        "scanInstructions": "No WhatsApp do celular: Aparelhos conectados → Conectar aparelho.",
+        "qrRotates": "O código se renova sozinho. Deixe esta tela aberta.",
+        "qrAlt": "QR Code para conectar o WhatsApp",
+        "qrExpired": "O QR Code expirou antes de ser lido. Clique em Conectar para gerar outro.",
+        "tokenCorrupted": "O token salvo não pode ser descriptografado com a ENCRYPTION_KEY atual. Remova a configuração e cole o token de novo.",
+        "errorSaving": "Não foi possível salvar o token.",
+        "retry": "Tentar de novo"
+      }
     },
     "sections": {
       "overview": "Visão geral",

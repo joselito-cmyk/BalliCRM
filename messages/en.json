@@ -1492,7 +1492,31 @@
       "step4_3": "Paste the <strong class=\"text-foreground\">Webhook Callback URL</strong> from above",
       "step4_4": "Enter the same <strong class=\"text-foreground\">Verify Token</strong> you set here",
       "step4_5": "Subscribe to \"messages\" webhook field",
-      "metaDocs": "Meta WhatsApp API Documentation"
+      "metaDocs": "Meta WhatsApp API Documentation",
+      "providerMeta": "Official API (Meta)",
+      "providerUazapi": "QR Code (UAZAPI)",
+      "uazapi": {
+        "title": "QR Code connection",
+        "description": "Connect a WhatsApp number by scanning a QR code — no Meta Cloud API required.",
+        "tokenLabel": "Instance token",
+        "tokenPlaceholder": "Paste the instance token",
+        "tokenHelp": "Create an instance in the UAZAPI panel and paste its instance token here.",
+        "save": "Save token",
+        "connect": "Connect",
+        "disconnect": "Disconnect",
+        "forget": "Remove configuration",
+        "forgetConfirm": "This removes the instance from the CRM. The instance itself stays in your UAZAPI panel. Continue?",
+        "statusConnected": "Connected",
+        "statusDisconnected": "Disconnected",
+        "instanceLabel": "Instance: {name}",
+        "scanInstructions": "On your phone: WhatsApp → Linked devices → Link a device.",
+        "qrRotates": "The code refreshes on its own. Keep this screen open.",
+        "qrAlt": "QR code to connect WhatsApp",
+        "qrExpired": "The QR code expired before it was scanned. Click Connect to generate a new one.",
+        "tokenCorrupted": "The stored token cannot be decrypted with the current ENCRYPTION_KEY. Remove the configuration and paste the token again.",
+        "errorSaving": "Could not save the token.",
+        "retry": "Try again"
+      }
     },
     "sections": {
       "overview": "Overview",
