@@ -309,15 +309,21 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         const contact = value.contacts[i] || value.contacts[0]
 
         if (message.type === 'reaction') {
-          if (!message.reaction?.message_id) continue
+          // Do NOT guard on message_id here — the original processMessage
+          // ran findOrCreateContact/findOrCreateConversation for every
+          // reaction, well-formed or not, and only handleReaction's own
+          // check bailed afterward. processInboundReaction below
+          // reproduces that order; guarding here would skip
+          // contact/conversation creation for a malformed reaction,
+          // which is a behavior change from the pre-refactor code.
           await processInboundReaction({
             accountId: config.account_id,
             configOwnerUserId: config.user_id,
             reaction: {
               from: message.from,
               contactName: contact.profile.name,
-              targetProviderMessageId: message.reaction.message_id,
-              emoji: message.reaction.emoji ?? '',
+              targetProviderMessageId: message.reaction?.message_id ?? '',
+              emoji: message.reaction?.emoji ?? '',
             },
           })
           continue
@@ -469,7 +475,7 @@ async function handleStatusUpdate(status: {
  * qualquer coisa desconhecida vira text, para o INSERT não estourar a
  * constraint.
  */
-function metaContentType(type: string): InboundContentType {
+export function metaContentType(type: string): InboundContentType {
   const allowed = new Set([
     'text', 'image', 'document', 'audio', 'video',
     'location', 'template', 'interactive',
@@ -484,7 +490,7 @@ function metaContentType(type: string): InboundContentType {
  * verificação de mídia (que é específica da Meta: valida o media id no
  * Graph API e devolve a URL do nosso proxy).
  */
-async function normalizeMetaMessage(
+export async function normalizeMetaMessage(
   message: WhatsAppMessage,
   contact: { profile: { name: string }; wa_id: string },
   accessToken: string

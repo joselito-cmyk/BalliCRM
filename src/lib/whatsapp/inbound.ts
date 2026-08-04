@@ -320,6 +320,18 @@ export async function processInboundReaction(args: ProcessReactionArgs): Promise
     })
   }
 
+  // Bail here — AFTER contact/conversation creation and the
+  // conversation.created dispatch above — when there's no usable
+  // reaction target. Matches the original handleReaction's own guard,
+  // which ran after processMessage had already opened the thread.
+  if (!reaction.targetProviderMessageId) {
+    console.warn(
+      '[inbound] reaction has no target message id; skipping',
+      reaction.from
+    )
+    return
+  }
+
   const targetInternalId = await lookupInternalIdByProviderId(
     reaction.targetProviderMessageId,
     conversationId
