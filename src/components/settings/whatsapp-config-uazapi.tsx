@@ -123,7 +123,11 @@ export function WhatsAppConfigUazapi() {
     setError(null)
     stopPolling()
     try {
-      await fetch('/api/whatsapp/uazapi/disconnect', { method: 'POST' })
+      const r = await fetch('/api/whatsapp/uazapi/disconnect', { method: 'POST' })
+      if (!r.ok) {
+        setError(t('errorSaving'))
+        return
+      }
       await fetchStatus()
     } finally {
       setBusy(false)
@@ -135,7 +139,11 @@ export function WhatsAppConfigUazapi() {
     setBusy(true)
     stopPolling()
     try {
-      await fetch('/api/whatsapp/uazapi/config', { method: 'DELETE' })
+      const r = await fetch('/api/whatsapp/uazapi/config', { method: 'DELETE' })
+      if (!r.ok) {
+        setError(t('errorSaving'))
+        return
+      }
       await fetchStatus()
     } finally {
       setBusy(false)
@@ -144,6 +152,7 @@ export function WhatsAppConfigUazapi() {
 
   const needsToken = state?.ok === false && (state.reason === 'no_config' || state.reason === 'wrong_provider')
   const corrupted = state?.ok === false && state.reason === 'token_corrupted'
+  const uazapiError = state?.ok === false && state.reason === 'uazapi_error'
 
   return (
     <Card>
@@ -161,6 +170,15 @@ export function WhatsAppConfigUazapi() {
             <p className="text-sm text-destructive">{t('tokenCorrupted')}</p>
             <Button size="sm" variant="outline" onClick={forget} disabled={busy}>
               {t('forget')}
+            </Button>
+          </div>
+        )}
+
+        {uazapiError && state?.ok === false && (
+          <div className="space-y-2 rounded-md bg-destructive/10 p-3">
+            <p className="text-sm text-destructive">{state.message}</p>
+            <Button size="sm" variant="outline" onClick={() => fetchStatus()} disabled={busy}>
+              {t('retry')}
             </Button>
           </div>
         )}
