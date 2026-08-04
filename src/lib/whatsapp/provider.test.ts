@@ -43,7 +43,7 @@ describe('provider.sendText', () => {
     expect(result).toEqual({ messageId: 'wamid.123' });
   });
 
-  it('routes a uazapi config to uazapi-api and decrypts uazapi_session_key', async () => {
+  it('routes a uazapi config to uazapi-api and decrypts uazapi_instance_token', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ result: 200, type: 'text', session: 'acct-1', messageId: 'true_x@c.us_1' }),
     );
@@ -51,16 +51,15 @@ describe('provider.sendText', () => {
     const config: WhatsAppConfig = {
       ...BASE_CONFIG,
       provider: 'uazapi',
-      uazapi_session: 'acct-1',
-      uazapi_session_key: encrypt('plaintext-session-key'),
+      uazapi_instance_token: encrypt('plaintext-instance-token'),
     };
 
     const result = await sendText(config, { to: '15551234567', text: 'oi' });
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://uazapi.test/sendText');
-    expect(init.headers.sessionkey).toBe('plaintext-session-key');
-    expect(JSON.parse(init.body)).toEqual({ session: 'acct-1', number: '15551234567', text: 'oi' });
+    expect(url).toBe('https://uazapi.test/send/text');
+    expect(init.headers.token).toBe('plaintext-instance-token');
+    expect(JSON.parse(init.body)).toEqual({ number: '15551234567', text: 'oi' });
     expect(result).toEqual({ messageId: 'true_x@c.us_1' });
   });
 
@@ -73,13 +72,22 @@ describe('provider.sendText', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('throws a clear error when a uazapi config is missing its session', async () => {
+  it('throws a clear error when a uazapi config is missing its instance token', async () => {
     const config: WhatsAppConfig = { ...BASE_CONFIG, provider: 'uazapi' };
 
     await expect(sendText(config, { to: '1', text: 'oi' })).rejects.toThrow(
-      /UAZAPI session not configured/,
+      /UAZAPI instance not configured/,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('recusa envio UAZAPI sem instance token', async () => {
+    await expect(
+      sendText(
+        { ...BASE_CONFIG, provider: 'uazapi', uazapi_instance_token: undefined },
+        { to: '55', text: 'x' },
+      ),
+    ).rejects.toThrow(/not configured/i);
   });
 });
 
@@ -100,13 +108,12 @@ describe('provider.sendMedia', () => {
     const config: WhatsAppConfig = {
       ...BASE_CONFIG,
       provider: 'uazapi',
-      uazapi_session: 'acct-1',
-      uazapi_session_key: encrypt('plaintext-session-key'),
+      uazapi_instance_token: encrypt('plaintext-instance-token'),
     };
 
     await sendMedia(config, { to: '15551234567', kind: 'document', link: 'https://cdn.test/f.pdf' });
 
-    expect(fetchMock.mock.calls[0][0]).toBe('https://uazapi.test/sendFile');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://uazapi.test/send/media');
   });
 
   it('routes a meta config to meta-api sendMediaMessage', async () => {
@@ -133,12 +140,12 @@ describe('provider.sendMedia', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('throws a clear error when a uazapi config is missing its session', async () => {
+  it('throws a clear error when a uazapi config is missing its instance token', async () => {
     const config: WhatsAppConfig = { ...BASE_CONFIG, provider: 'uazapi' };
 
     await expect(
       sendMedia(config, { to: '1', kind: 'image', link: 'https://cdn.test/x.jpg' }),
-    ).rejects.toThrow(/UAZAPI session not configured/);
+    ).rejects.toThrow(/UAZAPI instance not configured/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

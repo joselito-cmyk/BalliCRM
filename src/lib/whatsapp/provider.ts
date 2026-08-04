@@ -5,7 +5,7 @@
  * importing meta-api.ts / uazapi-api.ts directly, so none of them
  * need to know which encrypted field belongs to which provider.
  *
- * Scope: text + media only, matching the v1 scope in the design doc.
+ * Scope: text + media only, matching the Fase 3 scope in the design doc.
  * Templates, interactive messages, broadcast, and reactions stay
  * Meta-only and keep calling meta-api.ts directly — with a provider
  * guard added at each call site in Fase 3.
@@ -29,7 +29,7 @@ export interface ProviderSendResult {
 export interface ProviderSendTextArgs {
   to: string
   text: string
-  /** Meta-only: quotes a prior message so WhatsApp renders a reply preview. Ignored for UAZAPI (no v1 equivalent). */
+  /** Meta-only: quotes a prior message so WhatsApp renders a reply preview. Ignored for UAZAPI (sem equivalente na v2). */
   contextMessageId?: string
 }
 
@@ -40,12 +40,11 @@ export async function sendText(
   const { to, text, contextMessageId } = args
 
   if (config.provider === 'uazapi') {
-    if (!config.uazapi_session || !config.uazapi_session_key) {
-      throw new Error('UAZAPI session not configured for this account.')
+    if (!config.uazapi_instance_token) {
+      throw new Error('UAZAPI instance not configured for this account.')
     }
     const result = await uazapiSendText({
-      session: config.uazapi_session,
-      sessionkey: decrypt(config.uazapi_session_key),
+      token: decrypt(config.uazapi_instance_token),
       number: to,
       text,
     })
@@ -82,12 +81,11 @@ export async function sendMedia(
   const { to, kind, link, caption, filename, contextMessageId } = args
 
   if (config.provider === 'uazapi') {
-    if (!config.uazapi_session || !config.uazapi_session_key) {
-      throw new Error('UAZAPI session not configured for this account.')
+    if (!config.uazapi_instance_token) {
+      throw new Error('UAZAPI instance not configured for this account.')
     }
     const result = await uazapiSendMedia({
-      session: config.uazapi_session,
-      sessionkey: decrypt(config.uazapi_session_key),
+      token: decrypt(config.uazapi_instance_token),
       number: to,
       kind,
       path: link,
