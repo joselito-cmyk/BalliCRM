@@ -25,7 +25,6 @@ export default defineConfig({
         "0000000000000000000000000000000000000000000000000000000000000000",
       META_APP_SECRET: "test-meta-app-secret",
       UAZAPI_ENDPOINT: "https://uazapi.test",
-      UAZAPI_TOKEN: "test-uazapi-token",
       TZ: "UTC",
     },
     clearMocks: true,

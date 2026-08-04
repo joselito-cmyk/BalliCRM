@@ -123,6 +123,17 @@ export async function createBroadcast(
       400
     );
   }
+  // Broadcast is Meta-only (templates have no UAZAPI equivalent). A
+  // row switched to UAZAPI has a null access_token, which would make
+  // the decrypt below throw a raw TypeError — fail with the typed
+  // error the rest of this function uses.
+  if (config.provider !== 'meta' || !config.access_token) {
+    throw new BroadcastError(
+      'wrong_provider',
+      'WhatsApp is configured for a different provider (UAZAPI) — Meta broadcasts are unavailable. Reconnect the Meta integration in Settings.',
+      400
+    );
+  }
   const accessToken = decrypt(config.access_token);
 
   // Template row (once) for header/button components; guard a

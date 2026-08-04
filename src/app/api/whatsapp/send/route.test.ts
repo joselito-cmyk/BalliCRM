@@ -47,6 +47,9 @@ function makeSupabaseMock() {
             data: {
               id: 'cfg-1',
               account_id: 'acct-1',
+              // NOT NULL since migration 037; the send path's provider
+              // guard reads it, so the mock has to carry it.
+              provider: 'meta',
               phone_number_id: 'PNID-1',
               access_token: 'enc-token',
             },

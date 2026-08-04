@@ -84,18 +84,60 @@ export function WhatsAppConfigUazapi() {
     return stopPolling
   }, [state, fetchStatus, stopPolling])
 
-  async function saveToken() {
+  /**
+   * Traduz o estado de erro devolvido pelas rotas.
+   *
+   * `message` vem do servidor da UAZAPI (ou da rota) sempre em inglês;
+   * exibi-lo cru numa tela traduzida quebrava o idioma da interface.
+   * Motivos com significado conhecido viram texto traduzido; o resto
+   * mantém o detalhe original atrás de um rótulo traduzido — inventar
+   * uma tradução para texto arbitrário de terceiro seria pior.
+   */
+  function reasonMessage(s: StatusError): string {
+    const detail = `${t('errorPrefix')} ${s.message}`
+    switch (s.reason) {
+      case 'uazapi_error':
+        return t('uazapiUnreachable')
+      case 'token_corrupted':
+        return t('tokenCorrupted')
+      case 'no_config':
+      case 'wrong_provider':
+        return t('tokenMissing')
+    }
+    return detail
+  }
+
+  /**
+   * `confirmSwitch` só é enviado depois que o operador confirmou o
+   * 409 da rota: salvar um token UAZAPI apaga as credenciais da Meta
+   * da conta, e isso não pode acontecer calado.
+   */
+  async function saveToken(confirmSwitch = false) {
     setBusy(true)
     setError(null)
     try {
       const r = await fetch('/api/whatsapp/uazapi/config', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ instance_token: token }),
+        body: JSON.stringify({
+          instance_token: token,
+          ...(confirmSwitch ? { confirm_switch: true } : {}),
+        }),
       })
       const d = await r.json()
       if (!r.ok) {
-        setError(d?.error ?? t('errorSaving'))
+        if (r.status === 409 && d?.requires_confirmation && !confirmSwitch) {
+          // Mesmo padrão do forget(): confirm() nativo antes de uma
+          // ação destrutiva e irreversível.
+          if (confirm(t('switchFromMetaConfirm'))) {
+            await saveToken(true)
+          }
+          return
+        }
+        // Erros de validação de token e conflito de instância trazem
+        // texto arbitrário da UAZAPI — preserva o detalhe, traduz a
+        // moldura.
+        setError(d?.error ? `${t('errorPrefix')} ${d.error}` : t('errorSaving'))
         return
       }
       setToken('')
@@ -112,7 +154,7 @@ export function WhatsAppConfigUazapi() {
       const r = await fetch('/api/whatsapp/uazapi/connect', { method: 'POST' })
       const d = (await r.json()) as StatusResponse
       setState(d)
-      if (d.ok === false) setError(d.message)
+      if (d.ok === false) setError(reasonMessage(d))
     } finally {
       setBusy(false)
     }
@@ -176,7 +218,7 @@ export function WhatsAppConfigUazapi() {
 
         {uazapiError && state?.ok === false && (
           <div className="space-y-2 rounded-md bg-destructive/10 p-3">
-            <p className="text-sm text-destructive">{state.message}</p>
+            <p className="text-sm text-destructive">{reasonMessage(state)}</p>
             <Button size="sm" variant="outline" onClick={() => fetchStatus()} disabled={busy}>
               {t('retry')}
             </Button>
@@ -195,7 +237,7 @@ export function WhatsAppConfigUazapi() {
               onChange={(e) => setToken(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">{t('tokenHelp')}</p>
-            <Button onClick={saveToken} disabled={busy || !token.trim()}>
+            <Button onClick={() => saveToken()} disabled={busy || !token.trim()}>
               {t('save')}
             </Button>
           </div>

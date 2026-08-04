@@ -139,6 +139,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
+  // Switching an account to UAZAPI reuses this row and nulls every
+  // Meta column, so the decrypt below would throw a raw TypeError.
+  // Plain Error matches how this module reports config problems.
+  if (config.provider !== 'meta' || !config.access_token) {
+    throw new Error(
+      'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable for this account',
+    )
+  }
 
   const accessToken = decrypt(config.access_token)
 

@@ -1495,6 +1495,7 @@
       "metaDocs": "Meta WhatsApp API Documentation",
       "providerMeta": "Official API (Meta)",
       "providerUazapi": "QR Code (UAZAPI)",
+      "loadingProvider": "Loading your WhatsApp configuration…",
       "uazapi": {
         "title": "QR Code connection",
         "description": "Connect a WhatsApp number by scanning a QR code — no Meta Cloud API required.",
@@ -1515,6 +1516,10 @@
         "qrExpired": "The QR code expired before it was scanned. Click Connect to generate a new one.",
         "tokenCorrupted": "The stored token cannot be decrypted with the current ENCRYPTION_KEY. Remove the configuration and paste the token again.",
         "errorSaving": "Could not save the token.",
+        "errorPrefix": "Could not save:",
+        "tokenMissing": "No instance token saved for this account. Paste the instance token below.",
+        "uazapiUnreachable": "Could not reach the UAZAPI server. Try again in a moment.",
+        "switchFromMetaConfirm": "This account is already connected to the official Meta API. Saving an instance token will disconnect it and permanently erase the stored Meta credentials — you would have to enter them again to go back. Continue?",
         "retry": "Try again"
       }
     },

@@ -1494,6 +1494,7 @@
       "metaDocs": "Meta WhatsApp API 문서",
       "providerMeta": "공식 API (Meta)",
       "providerUazapi": "QR 코드 (UAZAPI)",
+      "loadingProvider": "WhatsApp 설정을 불러오는 중…",
       "uazapi": {
         "title": "QR 코드 연결",
         "description": "Meta 공식 API 없이 QR 코드를 스캔하여 WhatsApp 번호를 연결합니다.",
@@ -1514,6 +1515,10 @@
         "qrExpired": "QR 코드가 스캔되기 전에 만료되었습니다. 연결을 클릭하여 새로 생성하세요.",
         "tokenCorrupted": "저장된 토큰을 현재 ENCRYPTION_KEY로 복호화할 수 없습니다. 설정을 삭제하고 토큰을 다시 붙여넣으세요.",
         "errorSaving": "토큰을 저장할 수 없습니다.",
+        "errorPrefix": "저장할 수 없습니다:",
+        "tokenMissing": "이 계정에 저장된 인스턴스 토큰이 없습니다. 아래에 인스턴스 토큰을 붙여넣으세요.",
+        "uazapiUnreachable": "UAZAPI 서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.",
+        "switchFromMetaConfirm": "이 계정은 이미 Meta 공식 API에 연결되어 있습니다. 인스턴스 토큰을 저장하면 연결이 해제되고 저장된 Meta 자격 증명이 영구적으로 삭제됩니다 — 되돌리려면 자격 증명을 다시 입력해야 합니다. 계속하시겠습니까?",
         "retry": "다시 시도"
       }
     },

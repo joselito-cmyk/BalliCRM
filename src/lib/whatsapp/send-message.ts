@@ -262,6 +262,18 @@ export async function sendMessageToConversation(
     );
   }
 
+  // Provider guard. Switching an account to UAZAPI keeps the same row
+  // but nulls every Meta column, so `decrypt(config.access_token)`
+  // below would throw a raw TypeError on null. Fail with the typed
+  // error this path already uses for config problems instead.
+  if (config.provider !== 'meta' || !config.access_token) {
+    throw new SendMessageError(
+      'wrong_provider',
+      'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable. Reconnect the Meta integration in Settings.',
+      400
+    );
+  }
+
   const accessToken = decrypt(config.access_token);
 
   // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.

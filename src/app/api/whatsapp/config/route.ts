@@ -354,6 +354,18 @@ export async function POST(request: Request) {
     // store the credentials and the error so the UI can guide the
     // user through a retry.
     const baseRow = {
+      // Saving Meta credentials makes this account a Meta account, so
+      // the UAZAPI side has to be cleared — symmetric with what
+      // /api/whatsapp/uazapi/config does to the Meta columns. Leaving
+      // a stale uazapi_instance_token_hash behind would also keep the
+      // UNIQUE slot claimed, blocking that instance from ever being
+      // linked again.
+      provider: 'meta' as const,
+      uazapi_instance_token: null,
+      uazapi_instance_token_hash: null,
+      uazapi_status: null,
+      uazapi_connected_phone: null,
+      uazapi_instance_name: null,
       phone_number_id,
       waba_id: waba_id || null,
       access_token: encryptedAccessToken,

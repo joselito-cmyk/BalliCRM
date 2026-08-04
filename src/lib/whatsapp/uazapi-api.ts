@@ -107,6 +107,10 @@ async function uazapiFetch(
   const response = await fetch(`${UAZAPI_ENDPOINT}${path}`, {
     method,
     headers: { 'content-type': 'application/json', token },
+    // Servidor de terceiros: sem timeout, uma UAZAPI que aceita a
+    // conexão mas nunca responde segura a rota (e o painel de
+    // Configurações que faz polling nela) até o limite da plataforma.
+    signal: AbortSignal.timeout(10_000),
     ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   })
   if (!response.ok) {

@@ -149,6 +149,71 @@ describe('sendMessageToConversation — param validation (pre-DB)', () => {
   });
 });
 
+// A conta pode trocar para UAZAPI a qualquer momento; a troca reaproveita
+// a mesma linha e zera todas as colunas da Meta. Sem o guard, o
+// decrypt(config.access_token) logo abaixo estourava um TypeError cru.
+describe('sendMessageToConversation — provider guard', () => {
+  function dbWithConfig(config: Record<string, unknown>): SupabaseClient {
+    return {
+      from(table: string) {
+        const b: Record<string, unknown> = {};
+        const chain = () => b;
+        for (const m of ['select', 'eq']) b[m] = vi.fn(chain);
+        b.single = vi.fn(async () =>
+          table === 'conversations'
+            ? {
+                data: {
+                  id: 'cv-1',
+                  account_id: 'acct-1',
+                  contact: { id: 'ct-1', phone: '+14155550123' },
+                },
+                error: null,
+              }
+            : { data: config, error: null }
+        );
+        b.maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+        return b;
+      },
+    } as unknown as SupabaseClient;
+  }
+
+  const params: SendMessageParams = {
+    conversationId: 'cv-1',
+    messageType: 'text',
+    contentText: 'oi',
+  };
+
+  it('raises a typed SendMessageError when the account is on UAZAPI', async () => {
+    const db = dbWithConfig({
+      id: 'cfg-1',
+      provider: 'uazapi',
+      access_token: null,
+      uazapi_instance_token: 'enc-instance-token',
+    });
+    await expect(
+      sendMessageToConversation(db, 'acct-1', params)
+    ).rejects.toBeInstanceOf(SendMessageError);
+    await sendMessageToConversation(db, 'acct-1', params).catch(
+      (e: SendMessageError) => {
+        expect(e).not.toBeInstanceOf(TypeError);
+        expect(e.code).toBe('wrong_provider');
+        expect(e.status).toBe(400);
+        expect(e.message).toMatch(/different provider/i);
+      }
+    );
+  });
+
+  it('raises the same typed error for a meta row with a null access_token', async () => {
+    const db = dbWithConfig({ id: 'cfg-1', provider: 'meta', access_token: null });
+    await sendMessageToConversation(db, 'acct-1', params).catch(
+      (e: SendMessageError) => {
+        expect(e).toBeInstanceOf(SendMessageError);
+        expect(e.code).toBe('wrong_provider');
+      }
+    );
+  });
+});
+
 describe('SendMessageError', () => {
   it('carries a machine code and an HTTP status', () => {
     const e = new SendMessageError('meta_error', 'boom', 502);

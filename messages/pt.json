@@ -1485,6 +1485,7 @@
       "metaDocs": "Documentação da API do WhatsApp na Meta",
       "providerMeta": "API Oficial (Meta)",
       "providerUazapi": "QR Code (UAZAPI)",
+      "loadingProvider": "Carregando a configuração do WhatsApp…",
       "uazapi": {
         "title": "Conexão por QR Code",
         "description": "Conecte um número de WhatsApp escaneando um QR Code, sem precisar da API oficial da Meta.",
@@ -1505,6 +1506,10 @@
         "qrExpired": "O QR Code expirou antes de ser lido. Clique em Conectar para gerar outro.",
         "tokenCorrupted": "O token salvo não pode ser descriptografado com a ENCRYPTION_KEY atual. Remova a configuração e cole o token de novo.",
         "errorSaving": "Não foi possível salvar o token.",
+        "errorPrefix": "Não foi possível salvar:",
+        "tokenMissing": "Nenhum Instance Token salvo para esta conta. Cole o token da instância abaixo.",
+        "uazapiUnreachable": "Não foi possível falar com o servidor da UAZAPI. Tente de novo em alguns instantes.",
+        "switchFromMetaConfirm": "Esta conta já está conectada à API Oficial da Meta. Salvar um Instance Token vai desconectá-la e apagar as credenciais da Meta definitivamente — para voltar você precisará cadastrá-las de novo. Continuar?",
         "retry": "Tentar de novo"
       }
     },

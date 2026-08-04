@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { getInstanceStatus } from '@/lib/whatsapp/uazapi-api'
 import { hashInstanceToken } from '@/lib/whatsapp/uazapi-token'
 import { encrypt } from '@/lib/whatsapp/encryption'
-import { resolveAccountId } from '@/lib/whatsapp/uazapi-account'
+import { resolveAccountId, toStatusPayload } from '@/lib/whatsapp/uazapi-account'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
@@ -25,7 +25,12 @@ function supabaseAdmin() {
  * ANTES de gravar — um token inválido é recusado na hora, em vez de
  * virar uma config quebrada que só falha na hora de conectar.
  *
- * Body: { instance_token: string }
+ * Salvar troca o provedor da conta para UAZAPI e apaga as credenciais
+ * da Meta. Quando existe uma integração Meta viva isso exige
+ * `confirm_switch: true` — sem ele a rota devolve 409 para a UI poder
+ * pedir confirmação ao operador.
+ *
+ * Body: { instance_token: string, confirm_switch?: boolean }
  */
 export async function POST(request: Request) {
   try {
@@ -82,13 +87,59 @@ export async function POST(request: Request) {
       )
     }
 
+    const { data: existing } = await supabase
+      .from('whatsapp_config')
+      .select('id, provider, access_token')
+      .eq('account_id', accountId)
+      .maybeSingle()
+
+    // Gravar aqui zera o lado da Meta (ver `row` abaixo). Se a conta
+    // tem uma integração Meta VIVA (provider meta + token gravado),
+    // isso destrói credenciais em uso e sem volta — o token cifrado
+    // some do banco e só o operador da Meta consegue emitir outro.
+    // Exigimos confirmação explícita em vez de fazê-lo calado.
+    if (existing?.provider === 'meta' && existing?.access_token && body?.confirm_switch !== true) {
+      return NextResponse.json(
+        {
+          error:
+            'This account already has a Meta WhatsApp integration connected. Saving a UAZAPI instance token will disconnect it and permanently erase the stored Meta credentials. Resend with confirm_switch: true to proceed.',
+          reason: 'meta_config_will_be_replaced',
+          requires_confirmation: true,
+        },
+        { status: 409 },
+      )
+    }
+
+    // Cifrar pode falhar com ENCRYPTION_KEY malformada. Sem este
+    // catch a falha cai no 500 genérico do fim e o operador não tem
+    // como saber que o problema é a chave — mesmo tratamento de
+    // /api/whatsapp/config.
+    let encryptedToken: string
+    try {
+      encryptedToken = encrypt(rawToken)
+    } catch (err) {
+      console.error('[uazapi/config] encryption failed:', err)
+      return NextResponse.json(
+        {
+          error:
+            'Failed to encrypt token. Check that ENCRYPTION_KEY is a valid 64-character hex string in your environment variables.',
+        },
+        { status: 500 },
+      )
+    }
+
+    // Uma única fonte para "está conectado?" — a mesma que /connect,
+    // /status e /disconnect usam. Calcular à mão aqui já tinha
+    // produzido duas fórmulas divergentes para o mesmo conceito.
+    const payload = toStatusPayload(state)
+
     const row = {
       provider: 'uazapi' as const,
-      uazapi_instance_token: encrypt(rawToken),
+      uazapi_instance_token: encryptedToken,
       uazapi_instance_token_hash: tokenHash,
-      uazapi_instance_name: state.instance.name || null,
-      uazapi_status: state.instance.status,
-      uazapi_connected_phone: state.instance.owner || null,
+      uazapi_instance_name: payload.instance_name,
+      uazapi_status: payload.instance_status,
+      uazapi_connected_phone: payload.phone,
       // Trocar de provedor zera o lado da Meta: manter credenciais
       // órfãs faria o CHECK de coerência da 038 passar por acidente e
       // deixaria um token da Meta cifrado no banco sem dono.
@@ -99,16 +150,10 @@ export async function POST(request: Request) {
       registered_at: null,
       subscribed_apps_at: null,
       last_registration_error: null,
-      status: state.status.loggedIn ? 'connected' : 'disconnected',
-      connected_at: state.status.loggedIn ? new Date().toISOString() : null,
+      status: payload.connected ? 'connected' : 'disconnected',
+      connected_at: payload.connected ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     }
-
-    const { data: existing } = await supabase
-      .from('whatsapp_config')
-      .select('id')
-      .eq('account_id', accountId)
-      .maybeSingle()
 
     const { error: writeError } = existing
       ? await supabase.from('whatsapp_config').update(row).eq('account_id', accountId)
@@ -122,11 +167,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       instance: {
-        name: state.instance.name,
-        status: state.instance.status,
-        connected: state.status.connected && state.status.loggedIn,
-        phone: state.instance.owner || null,
-        profile_name: state.instance.profileName || null,
+        name: payload.instance_name,
+        status: payload.instance_status,
+        connected: payload.connected,
+        phone: payload.phone,
+        profile_name: payload.profile_name,
       },
     })
   } catch (error) {

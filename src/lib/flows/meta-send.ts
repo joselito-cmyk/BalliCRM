@@ -32,6 +32,24 @@ import { supabaseAdmin } from './admin-client'
 // keeps the foundation PR self-contained and unit-testable.
 // ------------------------------------------------------------
 
+/**
+ * Guard every Meta-only send path in this file.
+ *
+ * Switching an account to UAZAPI reuses the same `whatsapp_config`
+ * row and nulls all Meta columns, so `decrypt(config.access_token)`
+ * would throw a raw TypeError ("Cannot read properties of null").
+ * Throwing a plain Error with a readable message matches how the rest
+ * of this module reports config problems, and the engine's node-level
+ * error handling already surfaces it.
+ */
+function assertMetaConfig(config: { provider?: string | null; access_token?: string | null }): void {
+  if (config.provider !== 'meta' || !config.access_token) {
+    throw new Error(
+      'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable for this account',
+    )
+  }
+}
+
 interface SendTextEngineArgs {
   /** Account-level tenancy key. Drives contact + whatsapp_config
    *  lookups so a flow authored by user A still sends through the
@@ -90,6 +108,7 @@ export async function engineSendText(
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
+  assertMetaConfig(config)
 
   const accessToken = decrypt(config.access_token)
 
@@ -200,6 +219,7 @@ export async function engineSendMedia(
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
+  assertMetaConfig(config)
 
   const accessToken = decrypt(config.access_token)
 
@@ -352,6 +372,7 @@ async function sendInteractiveViaMeta(
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
+  assertMetaConfig(config)
 
   const accessToken = decrypt(config.access_token)
 

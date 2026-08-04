@@ -21,17 +21,27 @@ export function WhatsAppConfig() {
 
   // O provedor salvo manda na aba inicial: quem já conectou por QR
   // Code não deve cair no formulário da Meta ao abrir a página.
+  //
+  // `uazapi_error` conta como "esta conta é UAZAPI": ele só sai quando
+  // existe token salvo e o servidor da UAZAPI não respondeu. Mandar
+  // essas contas para a aba da Meta mostraria um banner de token
+  // corrompido (o access_token é null) com um botão de Reset que
+  // apagaria a linha compartilhada inteira.
   useEffect(() => {
     fetch('/api/whatsapp/uazapi/status')
       .then((r) => r.json())
       .then((d) => {
-        if (d?.ok === true || d?.reason === 'token_corrupted') setProvider('uazapi')
+        if (
+          d?.ok === true ||
+          d?.reason === 'token_corrupted' ||
+          d?.reason === 'uazapi_error'
+        ) {
+          setProvider('uazapi')
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
-
-  if (loading) return null
 
   return (
     <div className="space-y-6">
@@ -40,6 +50,7 @@ export function WhatsAppConfig() {
           variant={provider === 'meta' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setProvider('meta')}
+          disabled={loading}
         >
           {t('providerMeta')}
         </Button>
@@ -47,12 +58,22 @@ export function WhatsAppConfig() {
           variant={provider === 'uazapi' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setProvider('uazapi')}
+          disabled={loading}
         >
           {t('providerUazapi')}
         </Button>
       </div>
 
-      {provider === 'meta' ? <WhatsAppConfigMeta /> : <WhatsAppConfigUazapi />}
+      {/* A sonda inicial bate num servidor de terceiros. Esconder a
+          seção inteira enquanto ela roda deixava a aba da Meta —
+          que não depende dela — invisível por segundos. */}
+      {loading ? (
+        <p className="text-sm text-muted-foreground">{t('loadingProvider')}</p>
+      ) : provider === 'meta' ? (
+        <WhatsAppConfigMeta />
+      ) : (
+        <WhatsAppConfigUazapi />
+      )}
     </div>
   )
 }
