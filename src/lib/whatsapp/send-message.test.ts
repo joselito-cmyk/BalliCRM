@@ -254,6 +254,26 @@ describe('sendMessageToConversation — provider guard', () => {
       })
     ).rejects.toMatchObject({ code: 'wrong_provider' });
   });
+
+  it('recusa interactive pelo UAZAPI mesmo com instance token configurado', async () => {
+    const db = dbWithConfig({
+      id: 'cfg-1',
+      provider: 'uazapi',
+      access_token: null,
+      uazapi_instance_token: encrypt('tok-instancia'),
+    });
+    await expect(
+      sendMessageToConversation(db, 'acct-1', {
+        conversationId: 'cv-1',
+        messageType: 'interactive',
+        interactivePayload: {
+          kind: 'buttons',
+          body: 'Escolha uma opção',
+          buttons: [{ id: 'a', title: 'A' }],
+        },
+      })
+    ).rejects.toMatchObject({ code: 'wrong_provider' });
+  });
 });
 
 describe('SendMessageError', () => {
