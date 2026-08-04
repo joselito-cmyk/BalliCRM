@@ -587,13 +587,17 @@ async function normalizeMetaMessage(
 }
 ```
 
-4. No laço de `processWebhook`, onde hoje está `await processMessage(...)`,
-   coloque:
+4. No laço de `processWebhook` (hoje faz `decrypt` uma vez fora do laço e itera
+   por **índice**, casando `contact` por posição — `value.contacts[i] ||
+   value.contacts[0]`, não por `wa_id`), troque só a chamada, preservando essa
+   forma exatamente:
 
 ```ts
-      for (const message of value.messages) {
-        const contact = value.contacts.find((c) => c.wa_id === message.from)
-          ?? value.contacts[0]
+      const decryptedAccessToken = decrypt(config.access_token)
+
+      for (let i = 0; i < value.messages.length; i++) {
+        const message = value.messages[i]
+        const contact = value.contacts[i] || value.contacts[0]
 
         if (message.type === 'reaction') {
           if (!message.reaction?.message_id) continue
@@ -613,14 +617,17 @@ async function normalizeMetaMessage(
         await processInboundMessage({
           accountId: config.account_id,
           configOwnerUserId: config.user_id,
-          message: await normalizeMetaMessage(message, contact, accessToken),
+          message: await normalizeMetaMessage(message, contact, decryptedAccessToken),
         })
       }
 ```
 
-> Cuidado: mantenha o laço/variáveis (`config`, `accessToken`, seleção do
-> `contact`) exatamente como estão hoje ao redor da chamada antiga. Só a
-> chamada muda. Se o laço atual itera de outra forma, preserve a forma atual.
+> Isto reproduz o laço real de `webhook/route.ts` (linhas ~304-322 na versão
+> pré-Fase-3): `decrypt` uma vez antes do laço, `contact` casado por índice. Só
+> a chamada interna mudou — de `processMessage(...)` posicional para
+> `processInboundMessage`/`processInboundReaction` normalizados. Não troque o
+> casamento de contato para `.find(wa_id)` — não é assim que o código atual
+> funciona, e mudar isso seria uma alteração de comportamento não pedida.
 
 - [ ] **Step 6: Escrever os testes do pipeline**
 
