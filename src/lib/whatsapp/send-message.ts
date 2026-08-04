@@ -35,6 +35,7 @@ import {
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
+import { sendText as providerSendText, sendMedia as providerSendMedia } from './provider';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   sanitizePhoneForMeta,
@@ -262,34 +263,61 @@ export async function sendMessageToConversation(
     );
   }
 
-  // Provider guard. Switching an account to UAZAPI keeps the same row
-  // but nulls every Meta column, so `decrypt(config.access_token)`
-  // below would throw a raw TypeError on null. Fail with the typed
-  // error this path already uses for config problems instead.
-  if (config.provider !== 'meta' || !config.access_token) {
+  // Provider guard, by message KIND: templates and interactive messages
+  // have no UAZAPI equivalent, so they refuse for any non-Meta account
+  // regardless of whether a uazapi_instance_token is configured.
+  if ((messageType === 'template' || messageType === 'interactive') && config.provider !== 'meta') {
     throw new SendMessageError(
       'wrong_provider',
-      'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable. Reconnect the Meta integration in Settings.',
+      'Templates and interactive messages are only available on the Meta provider. Reconnect Meta in Settings.',
+      400
+    );
+  }
+  if (config.provider !== 'meta' && config.provider !== 'uazapi') {
+    throw new SendMessageError(
+      'wrong_provider',
+      `Unknown WhatsApp provider "${config.provider}".`,
+      400
+    );
+  }
+  // Switching an account to UAZAPI keeps the same row but nulls every
+  // Meta column, so `decrypt(config.access_token)` below would throw a
+  // raw TypeError on null. Fail with the typed error this path already
+  // uses for config problems instead.
+  if (config.provider === 'meta' && !config.access_token) {
+    throw new SendMessageError(
+      'whatsapp_not_configured',
+      'WhatsApp not configured. Please set up your WhatsApp integration first.',
+      400
+    );
+  }
+  if (config.provider === 'uazapi' && !config.uazapi_instance_token) {
+    throw new SendMessageError(
+      'whatsapp_not_configured',
+      'UAZAPI instance not configured. Paste the instance token in Settings.',
       400
     );
   }
 
-  const accessToken = decrypt(config.access_token);
+  const accessToken = config.provider === 'meta' ? decrypt(config.access_token) : '';
 
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
-    void db
-      .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
-      .then(({ error }: { error: { message: string } | null }) => {
-        if (error) {
-          console.warn(
-            '[send-message] access_token GCM upgrade failed:',
-            error.message
-          );
-        }
-      });
+  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent. Only
+  // meaningful for Meta — UAZAPI's own token is handled by provider.ts.
+  if (config.provider === 'meta') {
+    if (isLegacyFormat(config.access_token)) {
+      void db
+        .from('whatsapp_config')
+        .update({ access_token: encrypt(accessToken) })
+        .eq('id', config.id)
+        .then(({ error }: { error: { message: string } | null }) => {
+          if (error) {
+            console.warn(
+              '[send-message] access_token GCM upgrade failed:',
+              error.message
+            );
+          }
+        });
+    }
   }
 
   // Resolve the reply target to its Meta message_id. The parent must
@@ -412,34 +440,65 @@ export async function sendMessageToConversation(
   // back to the contact so the next send goes straight through.
   let waMessageId = '';
   let workingPhone = sanitizedPhone;
-  try {
-    const variants = phoneVariants(sanitizedPhone);
-    let lastError: unknown = null;
 
-    for (const variant of variants) {
-      try {
-        waMessageId = await attempt(variant);
-        workingPhone = variant;
-        lastError = null;
-        break;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (!isRecipientNotAllowedError(message)) {
-          throw err;
-        }
-        lastError = err;
-        console.warn(
-          `[send-message] variant "${variant}" rejected by Meta, trying next…`
-        );
+  if (config.provider === 'uazapi') {
+    // Uma tentativa só — a UAZAPI não tem a rejeição de dígito 9 que
+    // justifica o retry de variantes da Meta. Template/interactive já
+    // foram recusados acima para non-Meta, então só resta texto ou mídia.
+    try {
+      if (isMediaKind) {
+        const result = await providerSendMedia(config, {
+          to: sanitizedPhone,
+          kind: messageType as MediaKind,
+          link: mediaUrl!,
+          caption: contentText || undefined,
+          filename: filename || undefined,
+          contextMessageId,
+        });
+        waMessageId = result.messageId;
+      } else {
+        const result = await providerSendText(config, {
+          to: sanitizedPhone,
+          text: contentText!,
+          contextMessageId,
+        });
+        waMessageId = result.messageId;
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown UAZAPI error';
+      console.error('[send-message] UAZAPI send failed:', message);
+      throw new SendMessageError('uazapi_error', `UAZAPI error: ${message}`, 502);
     }
+  } else {
+    try {
+      const variants = phoneVariants(sanitizedPhone);
+      let lastError: unknown = null;
 
-    if (lastError) throw lastError;
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Unknown Meta API error';
-    console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+      for (const variant of variants) {
+        try {
+          waMessageId = await attempt(variant);
+          workingPhone = variant;
+          lastError = null;
+          break;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!isRecipientNotAllowedError(message)) {
+            throw err;
+          }
+          lastError = err;
+          console.warn(
+            `[send-message] variant "${variant}" rejected by Meta, trying next…`
+          );
+        }
+      }
+
+      if (lastError) throw lastError;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unknown Meta API error';
+      console.error('[send-message] Meta send failed for all variants:', message);
+      throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+    }
   }
 
   if (workingPhone !== sanitizedPhone) {
