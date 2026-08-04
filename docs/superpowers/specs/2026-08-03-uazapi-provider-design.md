@@ -642,3 +642,44 @@ conexão cair.
 - `POST /webhook` (escrita) e o formato real do payload de callback.
 - Corpo de sucesso de `/send/text` e `/send/media` (só sabemos que a rota
   valida entrada).
+- Ciclo completo de `POST /instance/connect` → escanear QR novo → `/status`
+  refletir `connected` pela tela do CRM (o aceite da Fase 2 usou uma instância
+  já conectada; o fluxo de QR do zero foi validado antes, fora do app, na
+  sondagem inicial dos contratos — não pelo painel).
+- `POST /instance/disconnect` chamado pela rota do app (`/api/whatsapp/uazapi/disconnect`)
+  — ainda não exercitado ponta a ponta.
+
+### Verificação de aceite da Fase 2 (2026-08-04)
+
+Rodado contra o servidor real, pela UI do CRM (não por sondagem direta):
+
+1. **Colar token válido → Salvar** — `POST /api/whatsapp/uazapi/config` validou
+   contra `GET /instance/status` e gravou. A tela mostrou o estado conectado
+   imediatamente (a instância `Novo Rio` já estava conectada de uma sondagem
+   anterior), com nome do perfil e número.
+2. **Banco confirmado** via SQL direto:
+   ```
+   provider=uazapi, uazapi_status=connected,
+   uazapi_connected_phone=5521984379771, uazapi_instance_name=Novo Rio,
+   token_len=130, hash_len=64
+   ```
+   `hash_len=64` confirma o SHA-256 correto; `token_len=130` (bem acima de 36,
+   o tamanho de um UUID cru) confirma que o token está cifrado em repouso, não
+   em texto puro.
+3. **Caminho Meta não regrediu** — a aba "API Oficial (Meta)" segue abrindo
+   normalmente; nenhum código do caminho Meta foi tocado nesta fase (Task 6
+   confirmou o formulário movido byte a byte).
+
+**Achado operacional, não um contrato de API:** o primeiro teste falhou com
+`RangeError: Invalid key length` em `encrypt()`. Causa raiz: o `ENCRYPTION_KEY`
+do `.env.local` local tinha um `-` sobrando no início
+(`ENCRYPTION_KEY=-17dbb8...`), tornando o valor hex inválido — `Buffer.from`
+descarta a entrada inválida e produz um buffer vazio, então **qualquer**
+`encrypt()`/`decrypt()` já falhava, para os dois provedores, desde antes desta
+sessão. Corrigido removendo o `-` (o valor restante já eram os 64 hex chars
+corretos). Isso também explica por que a aba Meta mostra "token não pôde ser
+descriptografado" para a conta de teste: o token dela foi cifrado em outro
+momento (provavelmente com a chave certa da produção), e não bate com a chave
+local recém-corrigida — comportamento pré-existente e documentado pela própria
+tela ("Redefinir configuração" + salvar de novo resolve), independente desta
+fase.
