@@ -843,40 +843,86 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `sendText(config, { to, text, contextMessageId? })` e
   `sendMedia(config, { to, kind, link, caption?, filename?, contextMessageId? })`
   de `src/lib/whatsapp/provider.ts`, ambos devolvendo `{ messageId: string }`.
-- Produces: envio funcionando nos dois provedores para texto e mídia.
+  `provider.ts` repassa `to` sem reformatar — quem chama já precisa entregar
+  só dígitos.
+- Produces: envio de **texto e mídia** funcionando nos dois provedores.
+  Templates e interativos continuam **só Meta**, em todo lugar.
 
-> Contexto que economiza tempo: os três arquivos hoje têm um guard
-> `if (config.provider !== 'meta' || !config.access_token) → erro` adicionado
-> na Fase 2. Esta task **substitui** esse guard por roteamento nos caminhos de
-> texto e mídia. Os guards de templates/interativos/broadcast/reações ficam
-> como estão — recusar é o comportamento desejado lá.
+> ⚠️ **Cada um dos três arquivos trata MAIS de um tipo de mensagem atrás de um
+> guard só** (texto, mídia, template, e — em dois dos três arquivos —
+> interativo). Trocar o guard inteiro por roteamento, sem olhar o tipo,
+> mandaria templates e interativos para o UAZAPI por engano — que não tem
+> equivalente e quebraria em runtime. A regra desta task é por **tipo de
+> mensagem**, não por arquivo:
+>
+> | Tipo | Roteia para UAZAPI? |
+> |---|---|
+> | texto | ✅ sim |
+> | mídia (imagem/vídeo/áudio/documento) | ✅ sim |
+> | template | ⛔ não — sempre recusa fora da Meta |
+> | interativo (botões/lista) | ⛔ não — sempre recusa fora da Meta |
+>
+> **Sobre o telefone:** `sanitizePhoneForMeta()` (já chamada nos três arquivos
+> antes do guard) já produz só dígitos, sem `+` — exatamente o formato que a
+> UAZAPI espera (confirmado lendo `phone-utils.ts`: a função remove tudo que
+> não é dígito, apesar do nome). **Reaproveite o valor já sanitizado**; não
+> invente uma segunda conversão.
+>
+> **Sobre o retry de variantes** (`phoneVariants`, usado nos três arquivos):
+> existe só porque a Meta rejeita números conforme o dígito 9 do celular
+> brasileiro. A UAZAPI não tem essa rejeição. Para UAZAPI, **uma tentativa só,
+> sem o laço de variantes** — não porte o retry.
 
 - [ ] **Step 1: Escrever o teste que falha em `send-message.test.ts`**
 
+O arquivo já tem, no `describe('sendMessageToConversation — provider guard', …)`
+(criado na Fase 2), um helper `dbWithConfig(config)` que faz `.single()` em
+`conversations` devolver um contato/conversa fixos e em qualquer outra tabela
+devolver o `config` passado. Acrescente os dois testes abaixo **dentro** desse
+mesmo `describe`, reaproveitando `dbWithConfig` e `params`:
+
 ```ts
 it('roteia envio de texto para UAZAPI quando a conta usa esse provedor', async () => {
-  const uazapiConfig = {
-    ...BASE_CONFIG,
+  const db = dbWithConfig({
+    id: 'cfg-1',
     provider: 'uazapi',
-    phone_number_id: null,
     access_token: null,
     uazapi_instance_token: encrypt('tok-instancia'),
-  }
-  const calls: Array<{ url: string; body: unknown }> = []
+  });
+  const calls: Array<{ url: string; body: unknown }> = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: { body: string }) => {
-    calls.push({ url, body: JSON.parse(init.body) })
-    return { ok: true, status: 200, json: async () => ({ messageid: 'UAZ-1' }) }
-  }))
+    calls.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => ({ messageid: 'UAZ-1' }) };
+  }));
 
-  await sendMessageToConversation({ ...baseParams, config: uazapiConfig })
+  await sendMessageToConversation(db, 'acct-1', params);
 
-  expect(calls[0].url).toContain('/send/text')
-  expect(calls[0].body).toMatchObject({ number: expect.any(String), text: expect.any(String) })
-})
+  expect(calls[0].url).toContain('/send/text');
+  expect(calls[0].body).toMatchObject({ number: expect.any(String), text: expect.any(String) });
+});
+
+it('recusa template pelo UAZAPI mesmo com instance token configurado', async () => {
+  const db = dbWithConfig({
+    id: 'cfg-1',
+    provider: 'uazapi',
+    access_token: null,
+    uazapi_instance_token: encrypt('tok-instancia'),
+  });
+  await expect(
+    sendMessageToConversation(db, 'acct-1', {
+      conversationId: 'cv-1',
+      messageType: 'template',
+      templateName: 'oi_cliente',
+    })
+  ).rejects.toMatchObject({ code: 'wrong_provider' });
+});
 ```
 
-> Ajuste `BASE_CONFIG` / `baseParams` aos nomes que o arquivo já usa — não
-> invente fixtures novas se as existentes servem.
+> `dbWithConfig`/`params` já existem no arquivo (Fase 2) — não recrie, só
+> importe/reaproveite. `sendMessageToConversation(db, accountId, params)` lê
+> `whatsapp_config` **do banco** por `account_id`; não recebe `config` como
+> argumento — é por isso que o teste passa o provider através do `db` mockado,
+> não de um objeto de config direto.
 
 - [ ] **Step 2: Rodar e confirmar que falha**
 
@@ -884,100 +930,283 @@ Run: `npx vitest run src/lib/whatsapp/send-message.test.ts`
 Esperado: FAIL com a mensagem do guard atual (`wrong_provider` / "Meta sends
 are unavailable").
 
-- [ ] **Step 3: Substituir o guard por roteamento em `send-message.ts`**
+- [ ] **Step 3: Reescrever o guard e o envio em `send-message.ts`**
 
-Troque o bloco do guard (`if (config.provider !== 'meta' || !config.access_token) { throw new SendMessageError('wrong_provider', …) }`)
-e a chamada direta a `meta-api` por:
+Adicione o import:
 
 ```ts
 import { sendText as providerSendText, sendMedia as providerSendMedia } from './provider'
 ```
 
+Troque o guard atual (por volta de `if (config.provider !== 'meta' || !config.access_token) { throw new SendMessageError('wrong_provider', …) }`, logo após buscar `config`) por:
+
 ```ts
-  // Roteamento por provedor. provider.ts decide entre meta-api.ts e
-  // uazapi-api.ts e cuida de decifrar a credencial certa; este arquivo
-  // não precisa mais saber qual coluna pertence a quem.
-  //
-  // Recursos exclusivos da Meta (templates, interativos) continuam
-  // barrados nos seus próprios call sites — só texto e mídia roteiam.
+  // Templates e interativos não têm equivalente na UAZAPI — recusa sempre,
+  // independente do provider.uazapi_instance_token existir ou não.
+  if ((messageType === 'template' || messageType === 'interactive') && config.provider !== 'meta') {
+    throw new SendMessageError(
+      'wrong_provider',
+      'Templates and interactive messages are only available on the Meta provider. Reconnect Meta in Settings.',
+      400
+    );
+  }
   if (config.provider !== 'meta' && config.provider !== 'uazapi') {
     throw new SendMessageError(
       'wrong_provider',
       `Unknown WhatsApp provider "${config.provider}".`,
       400
-    )
+    );
   }
   if (config.provider === 'meta' && !config.access_token) {
     throw new SendMessageError(
-      'not_configured',
+      'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
       400
-    )
+    );
   }
   if (config.provider === 'uazapi' && !config.uazapi_instance_token) {
     throw new SendMessageError(
-      'not_configured',
+      'whatsapp_not_configured',
       'UAZAPI instance not configured. Paste the instance token in Settings.',
       400
-    )
+    );
   }
 ```
 
-E onde hoje chama `sendTextMessage({ phoneNumberId, accessToken, … })`, use
-`providerSendText(config, { to, text, contextMessageId })`. Idem para mídia com
-`providerSendMedia(config, { to, kind, link, caption, filename, contextMessageId })`.
+Envolva o `decrypt`/self-heal existente (que só faz sentido para Meta) em
+`if (config.provider === 'meta') { … }`, guardando o resultado numa variável
+que existe nos dois ramos (ex.: `const accessToken = config.provider === 'meta' ? decrypt(config.access_token) : ''` antes do bloco de self-heal, que fica dentro do `if`).
 
-> O `decrypt(config.access_token)` e o self-heal de ciphertext legado (bloco
-> `isLegacyFormat`) só fazem sentido para Meta — mantenha-os **dentro** de um
-> `if (config.provider === 'meta')`, não os apague.
+No bloco "Send via Meta — retry across phone-number variants…" (o `try { const variants = phoneVariants(sanitizedPhone) … }`), acrescente um ramo UAZAPI **antes** dele, cobrindo só texto e mídia (template/interactive já foram recusados acima para não-Meta, então dentro deste bloco, se `provider === 'uazapi'`, só resta texto ou mídia):
+
+```ts
+  let waMessageId = '';
+  let workingPhone = sanitizedPhone;
+
+  if (config.provider === 'uazapi') {
+    // Uma tentativa só — a UAZAPI não tem a rejeição de dígito 9 que
+    // justifica o retry de variantes da Meta.
+    try {
+      if (isMediaKind) {
+        const result = await providerSendMedia(config, {
+          to: sanitizedPhone,
+          kind: messageType as MediaKind,
+          link: mediaUrl!,
+          caption: contentText || undefined,
+          filename: filename || undefined,
+          contextMessageId,
+        });
+        waMessageId = result.messageId;
+      } else {
+        const result = await providerSendText(config, {
+          to: sanitizedPhone,
+          text: contentText!,
+          contextMessageId,
+        });
+        waMessageId = result.messageId;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown UAZAPI error';
+      console.error('[send-message] UAZAPI send failed:', message);
+      throw new SendMessageError('uazapi_error', `UAZAPI error: ${message}`, 502);
+    }
+  } else {
+  try {
+    const variants = phoneVariants(sanitizedPhone);
+    let lastError: unknown = null;
+    /* … laço de retry existente, inalterado … */
+    if (lastError) throw lastError;
+  } catch (err) {
+    /* … catch existente, inalterado … */
+  }
+  }
+```
+
+> O `if (workingPhone !== sanitizedPhone) { … auto-corrige o telefone do
+> contato }` que vem logo depois continua fora deste `if/else`, roda para os
+> dois provedores, e é inofensivo para UAZAPI (`workingPhone === sanitizedPhone`
+> sempre, então nunca dispara). O insert em `messages` também continua
+> **inalterado e fora do if/else** — `waMessageId` já está preenchido pelos
+> dois caminhos.
 
 - [ ] **Step 4: Rodar os testes do arquivo**
 
 Run: `npx vitest run src/lib/whatsapp/send-message.test.ts`
-Esperado: PASS, incluindo os testes Meta já existentes, sem editá-los.
+Esperado: PASS, incluindo os testes Meta já existentes (texto, mídia, template,
+interativo — nenhum editado) e os dois novos (UAZAPI roteia texto; template
+recusa fora da Meta).
 
-- [ ] **Step 5: Repetir em `automations/meta-send.ts`**
+- [ ] **Step 5: Repetir em `automations/meta-send.ts` — só o `kind: 'text'`**
 
-Mesmo padrão. Adicione antes o teste:
+`sendViaMeta` neste arquivo atende dois tipos por um `SendInput` union:
+`{ kind: 'text' }` e `{ kind: 'template' }` (`engineSendInteractive` já delega
+inteiro para `flows/meta-send.ts`, não passa por aqui — não mexa nele).
+
+O teste (`src/lib/automations/meta-send.test.ts`) já existe, da Fase 2, com um
+`configRow` mutável a nível de módulo e um fixture `args` — só `engineSendText`
+está importado hoje. Acrescente `engineSendTemplate` ao import e os dois testes
+abaixo **dentro** do `describe('automations engineSendText — provider guard', …)`
+já existente:
 
 ```ts
-it('envia por UAZAPI quando a conta usa esse provedor', async () => {
+it('roteia texto para UAZAPI quando a conta usa esse provedor', async () => {
+  configRow = {
+    id: 'cfg-1',
+    provider: 'uazapi',
+    access_token: null,
+    uazapi_instance_token: 'enc-instance-token',
+  }
+  const calls: Array<{ url: string; body: unknown }> = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: { body: string }) => {
+    calls.push({ url, body: JSON.parse(init.body) })
+    return { ok: true, status: 200, json: async () => ({ messageid: 'UAZ-1' }) }
+  }))
+  await engineSendText(args)
+  expect(calls[0].url).toContain('/send/text')
+})
+
+it('recusa template pelo UAZAPI mesmo com instance token', async () => {
+  configRow = {
+    id: 'cfg-1',
+    provider: 'uazapi',
+    access_token: null,
+    uazapi_instance_token: 'enc-instance-token',
+  }
+  await expect(
+    engineSendTemplate({ ...args, templateName: 'oi_cliente' })
+  ).rejects.toThrow(/only available.*Meta/i)
+})
+```
+
+> `decrypt` real do módulo `@/lib/whatsapp/encryption` não está mockado neste
+> arquivo — `uazapi_instance_token` precisa ser algo que `decrypt()` aceite, ou
+> a chamada real ao `uazapi-api.ts` vai estourar antes do `fetch`. Se
+> `encrypt`/`decrypt` não estiverem importados no teste, use
+> `encrypt('tok-instancia')` (de `@/lib/whatsapp/encryption`, que é real, não
+> mockado) para gerar o valor de `uazapi_instance_token` em vez do literal
+> `'enc-instance-token'` herdado do teste de guard anterior — aquele literal só
+> funcionava porque o teste antigo nunca chegava a decifrar nada (recusava
+> antes).
+
+No guard (`if (config.provider !== 'meta' || !config.access_token) { throw new Error(…) }`), aplique a mesma regra por tipo:
+
+```ts
+  if (input.kind === 'template' && config.provider !== 'meta') {
+    throw new Error(
+      'Templates are only available on the Meta provider. Reconnect Meta in Settings.'
+    );
+  }
+  if (config.provider !== 'meta' && config.provider !== 'uazapi') {
+    throw new Error(`Unknown WhatsApp provider "${config.provider}".`);
+  }
+  if (config.provider === 'meta' && !config.access_token) {
+    throw new Error('WhatsApp not configured for this account');
+  }
+  if (config.provider === 'uazapi' && !config.uazapi_instance_token) {
+    throw new Error('UAZAPI instance not configured for this account');
+  }
+```
+
+E no retry (`const variants = phoneVariants(sanitized); … for (const v of variants) { … }`), o mesmo desvio: se `config.provider === 'uazapi'`, uma tentativa só via
+`providerSendText(config, { to: sanitized, text: input.text })` (só existe
+`kind: 'text'` chegando aqui sob UAZAPI, já que template foi recusado acima),
+sem `phoneVariants`; senão, o laço existente inalterado.
+
+- [ ] **Step 6: Rodar os testes do arquivo**
+
+Run: `npx vitest run src/lib/automations/meta-send.test.ts`
+Esperado: PASS, testes Meta existentes intactos.
+
+- [ ] **Step 7: Repetir em `flows/meta-send.ts` — só 2 dos 3 `assertMetaConfig`**
+
+O arquivo tem `assertMetaConfig(config)` em exatamente três pontos:
+`engineSendText` (roteia), `engineSendMedia` (roteia), e
+`sendInteractiveViaMeta` (usada por `engineSendInteractiveButtons`/
+`engineSendInteractiveList`) — **esta última NÃO SE MEXE**. Interativo
+continua Meta-only; deixe `assertMetaConfig(config)` exatamente como está
+nesse call site.
+
+Para os outros dois, troque `assertMetaConfig(config)` pela mesma lógica do
+Step 3/5 (guard por tipo — aqui não há ambiguidade de tipo dentro de cada
+função, `engineSendText` só faz texto, `engineSendMedia` só faz mídia — então
+o guard é simplesmente "se não-Meta, exige `uazapi_instance_token`") e roteie o
+envio interno por `providerSendText`/`providerSendMedia` quando
+`config.provider === 'uazapi'`, sem `phoneVariants`.
+
+Mesmo padrão do Step 5: `configRow` mutável e fixture `args` já existem em
+`flows/meta-send.test.ts`, só `engineSendText` está importado. Acrescente
+`engineSendInteractiveButtons` ao import e os dois testes abaixo **dentro** do
+`describe('flows engineSendText — provider guard', …)` já existente:
+
+```ts
+it('roteia texto para UAZAPI em engineSendText', async () => {
+  configRow = {
+    id: 'cfg-1',
+    provider: 'uazapi',
+    access_token: null,
+    uazapi_instance_token: encrypt('tok-instancia'),
+  }
   const calls: string[] = []
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     calls.push(url)
     return { ok: true, status: 200, json: async () => ({ messageid: 'UAZ-1' }) }
   }))
-  await sendViaMeta({
-    ...baseArgs,
-    config: { ...baseArgs.config, provider: 'uazapi', access_token: null, uazapi_instance_token: encrypt('tok') },
-  })
+  await engineSendText(args)
   expect(calls[0]).toContain('/send/text')
+})
+
+it('sendInteractiveViaMeta continua recusando UAZAPI', async () => {
+  configRow = {
+    id: 'cfg-1',
+    provider: 'uazapi',
+    access_token: null,
+    uazapi_instance_token: encrypt('tok-instancia'),
+  }
+  await expect(
+    engineSendInteractiveButtons({
+      accountId: 'acct-1',
+      userId: 'user-1',
+      conversationId: 'cv-1',
+      contactId: 'ct-1',
+      bodyText: 'Escolha uma opção',
+      buttons: [{ id: 'a', title: 'Opção A' }],
+    })
+  ).rejects.toThrow(/different provider|UAZAPI/i)
 })
 ```
 
-> Ajuste o nome da função exportada ao que o arquivo realmente exporta.
+> Importe `encrypt` de `@/lib/whatsapp/encryption` (real, não mockado neste
+> arquivo) — mesmo motivo do Step 5: `provider.ts` decifra
+> `uazapi_instance_token` de verdade.
 
-- [ ] **Step 6: Repetir em `flows/meta-send.ts` (3 call sites)**
+- [ ] **Step 8: Rodar os testes do arquivo**
 
-O arquivo tem `assertMetaConfig(config)` chamado em três pontos, cada um antes
-de um `decrypt`. Substitua os três pelo roteamento via `provider.ts`, do mesmo
-modo. Adicione um teste equivalente ao do Step 5 em `flows/meta-send.test.ts`.
+Run: `npx vitest run src/lib/flows/meta-send.test.ts`
+Esperado: PASS. O teste de interativo prova que `sendInteractiveViaMeta`
+continua recusando — se esse teste falhar (interativo aceitando UAZAPI), a
+Task foi longe demais e precisa reverter esse call site específico.
 
-- [ ] **Step 7: Suíte inteira**
+- [ ] **Step 9: Suíte inteira**
 
 Run: `npx tsc --noEmit && npx vitest run`
-Esperado: verde. Se um teste Meta quebrou, é regressão real.
+Esperado: verde. Se um teste Meta quebrou (texto, mídia, template OU
+interativo, nos três arquivos), é regressão real — o guard por tipo deve
+manter o comportamento Meta 100% idêntico ao de antes desta task.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/lib/whatsapp/send-message.ts src/lib/whatsapp/send-message.test.ts src/lib/automations/meta-send.ts src/lib/automations/meta-send.test.ts src/lib/flows/meta-send.ts src/lib/flows/meta-send.test.ts
 git commit -m "feat(whatsapp): route text and media sends through the provider layer
 
-provider.ts shipped in Fase 1 with no production callers. The three send
-call sites now go through it, so a UAZAPI-connected account can send.
-Meta-only features (templates, interactive, broadcast, reactions) keep
-their existing provider guards — refusing there is intended.
+provider.ts shipped in Fase 1 with no production callers. Text and media
+sends now route through it per message KIND, not per file — all three
+send call sites handle more than one message type behind a single guard,
+and templates/interactive have no UAZAPI equivalent, so they keep
+refusing non-Meta regardless of file. UAZAPI sends skip Meta's
+phone-variant retry (a workaround for a Meta-specific rejection that
+doesn't apply to UAZAPI) and reuse the already-digits-only sanitized
+phone.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
