@@ -1519,7 +1519,9 @@
         "tokenMissing": "이 계정에 저장된 인스턴스 토큰이 없습니다. 아래에 인스턴스 토큰을 붙여넣으세요.",
         "uazapiUnreachable": "UAZAPI 서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.",
         "switchFromMetaConfirm": "이 계정은 이미 Meta 공식 API에 연결되어 있습니다. 인스턴스 토큰을 저장하면 연결이 해제되고 저장된 Meta 자격 증명이 영구적으로 삭제됩니다 — 되돌리려면 자격 증명을 다시 입력해야 합니다. 계속하시겠습니까?",
-        "retry": "다시 시도"
+        "retry": "다시 시도",
+        "limitationsTitle": "이 연결에서 불가능한 기능",
+        "limitationsBody": "Meta 승인 템플릿, 버튼 메시지, 대량 발송, 반응은 공식 API 전용이며 QR 코드 연결에서는 작동하지 않습니다. 텍스트와 미디어는 정상 작동합니다."
       }
     },
     "sections": {

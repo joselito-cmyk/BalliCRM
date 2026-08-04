@@ -261,6 +261,10 @@ export function WhatsAppConfigUazapi() {
                     {t('forget')}
                   </Button>
                 </div>
+                <div className="mt-4 rounded-md bg-muted p-3">
+                  <p className="text-sm font-medium">{t('limitationsTitle')}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('limitationsBody')}</p>
+                </div>
               </div>
             ) : state.instance_status === 'connecting' && state.qrcode ? (
               <div className="space-y-2">

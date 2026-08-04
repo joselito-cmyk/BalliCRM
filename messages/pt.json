@@ -1510,7 +1510,9 @@
         "tokenMissing": "Nenhum Instance Token salvo para esta conta. Cole o token da instância abaixo.",
         "uazapiUnreachable": "Não foi possível falar com o servidor da UAZAPI. Tente de novo em alguns instantes.",
         "switchFromMetaConfirm": "Esta conta já está conectada à API Oficial da Meta. Salvar um Instance Token vai desconectá-la e apagar as credenciais da Meta definitivamente — para voltar você precisará cadastrá-las de novo. Continuar?",
-        "retry": "Tentar de novo"
+        "retry": "Tentar de novo",
+        "limitationsTitle": "O que não funciona nesta conexão",
+        "limitationsBody": "Modelos aprovados pela Meta, mensagens com botões, disparos em massa e reações são recursos da API oficial e não funcionam por QR Code. Texto e mídia funcionam normalmente."
       }
     },
     "sections": {
