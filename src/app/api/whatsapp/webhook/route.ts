@@ -284,6 +284,23 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       const config = configRows[0]
 
+      // This is the Meta webhook, so the row it matched must still be a
+      // Meta row. Switching an account to UAZAPI nulls phone_number_id
+      // (so the lookup above normally can't match it) along with
+      // access_token — but if a stale row ever did match, the decrypt
+      // below would throw a raw TypeError and abort the whole batch.
+      // Drop the message with a diagnosable log, as this loop already
+      // does for every other unusable-config case.
+      if (config.provider !== 'meta' || !config.access_token) {
+        console.error(
+          'Config for phone_number_id',
+          phoneNumberId,
+          `is configured for provider "${config.provider}", not Meta — inbound message dropped.`,
+          'Reconnect the Meta integration to receive on this number.'
+        )
+        continue
+      }
+
       const decryptedAccessToken = decrypt(config.access_token)
 
       for (let i = 0; i < value.messages.length; i++) {

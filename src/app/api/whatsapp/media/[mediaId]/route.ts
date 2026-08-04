@@ -62,6 +62,16 @@ export async function GET(
       )
     }
 
+    // Media download goes through the Meta Graph API. A row switched
+    // to UAZAPI has a null access_token, which would make the decrypt
+    // below throw a raw TypeError and land as a generic 500.
+    if (config.provider !== 'meta' || !config.access_token) {
+      return NextResponse.json(
+        { error: 'WhatsApp is configured for a different provider (UAZAPI) — Meta media download is unavailable' },
+        { status: 400 }
+      )
+    }
+
     const accessToken = decrypt(config.access_token)
 
     // Get the download URL from Meta

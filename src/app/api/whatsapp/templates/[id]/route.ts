@@ -149,6 +149,18 @@ export async function PATCH(
           { status: 400 },
         )
       }
+      // Template edits are Meta-only. Switching to UAZAPI nulls
+      // access_token on this same row, so the decrypt below would throw
+      // a raw TypeError instead of this route's usual 400.
+      if (config.provider !== 'meta' || !config.access_token) {
+        return NextResponse.json(
+          {
+            error:
+              'WhatsApp is configured for a different provider (UAZAPI) — Meta template editing is unavailable.',
+          },
+          { status: 400 },
+        )
+      }
       const accessToken = decrypt(config.access_token)
 
       // Image headers need a fresh Resumable-Upload handle on every edit
@@ -286,6 +298,18 @@ export async function DELETE(
       if (configError || !config || !config.waba_id) {
         return NextResponse.json(
           { error: 'WhatsApp not configured — cannot delete on Meta.' },
+          { status: 400 },
+        )
+      }
+      // Meta-only delete. A row switched to UAZAPI nulls both waba_id
+      // and access_token — the check above would report it as "not
+      // configured", so name the real cause before the decrypt.
+      if (config.provider !== 'meta' || !config.access_token) {
+        return NextResponse.json(
+          {
+            error:
+              'WhatsApp is configured for a different provider (UAZAPI) — cannot delete on Meta.',
+          },
           { status: 400 },
         )
       }

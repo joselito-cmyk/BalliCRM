@@ -111,13 +111,23 @@ export async function POST(request: Request) {
     // WhatsApp config + access token. Account-scoped post-multi-user.
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
-      .select('phone_number_id, access_token')
+      .select('phone_number_id, access_token, provider')
       .eq('account_id', accountId)
       .single();
 
     if (configError || !config) {
       return NextResponse.json(
         { error: 'WhatsApp not configured.' },
+        { status: 400 },
+      );
+    }
+
+    // Reactions are Meta-only (no UAZAPI v2 equivalent). Switching an
+    // account to UAZAPI nulls access_token on this same row, so the
+    // decrypt below would throw a raw TypeError instead of a 400.
+    if (config.provider !== 'meta' || !config.access_token) {
+      return NextResponse.json(
+        { error: 'WhatsApp is configured for a different provider (UAZAPI) — Meta reactions are unavailable.' },
         { status: 400 },
       );
     }

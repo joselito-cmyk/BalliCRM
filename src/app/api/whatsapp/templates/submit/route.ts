@@ -163,6 +163,20 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
+      // Templates are Meta-only. A row switched to UAZAPI has waba_id
+      // and access_token both nulled, so without this the caller would
+      // get the misleading "WABA ID missing" below instead of the real
+      // cause — and the decrypt after it would throw a raw TypeError.
+      if (config.provider !== 'meta' || !config.access_token) {
+        return NextResponse.json(
+          {
+            error:
+              'WhatsApp is configured for a different provider (UAZAPI) — Meta template submission is unavailable. Reconnect the Meta integration in Settings.',
+          },
+          { status: 400 },
+        )
+      }
+
       if (!config.waba_id) {
         return NextResponse.json(
           {

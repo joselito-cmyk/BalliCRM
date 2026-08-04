@@ -150,6 +150,21 @@ export async function POST(request: Request) {
       )
     }
 
+    // Broadcast is Meta-only (templates have no UAZAPI equivalent).
+    // Switching an account to UAZAPI reuses this row and nulls every
+    // Meta column, so the decrypt below would throw a raw TypeError
+    // and surface as an opaque 500 — answer with the same 400 shape
+    // this route already uses for unusable config.
+    if (config.provider !== 'meta' || !config.access_token) {
+      return NextResponse.json(
+        {
+          error:
+            'WhatsApp is configured for a different provider (UAZAPI) — Meta broadcasts are unavailable. Reconnect the Meta integration in Settings.',
+        },
+        { status: 400 }
+      )
+    }
+
     const accessToken = decrypt(config.access_token)
 
     // Load the template row once so sendTemplateMessage can build
