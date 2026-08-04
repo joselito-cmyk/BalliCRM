@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from './encryption'
+import type { UazapiInstanceState } from './uazapi-api'
 
 export type UazapiConfigError = 'no_config' | 'wrong_provider' | 'token_corrupted'
 
@@ -51,4 +52,43 @@ export async function loadUazapiToken(
   } catch {
     return { error: 'token_corrupted' }
   }
+}
+
+export interface UazapiStatusPayload {
+  ok: true
+  connected: boolean
+  instance_status: string
+  qrcode: string | null
+  phone: string | null
+  profile_name: string | null
+  instance_name: string | null
+  last_disconnect_reason: string | null
+}
+
+/**
+ * Forma única devolvida por /connect e /status, para o painel tratar
+ * as duas respostas com um só caminho de código.
+ *
+ * `qrcode` só sai quando há QR de fato — string vazia vira null, senão
+ * o <img> renderiza quebrado ao conectar.
+ */
+export function toStatusPayload(state: UazapiInstanceState): UazapiStatusPayload {
+  return {
+    ok: true,
+    connected: state.status.connected && state.status.loggedIn,
+    instance_status: state.instance.status,
+    qrcode: state.instance.qrcode || null,
+    phone: state.instance.owner || null,
+    profile_name: state.instance.profileName || null,
+    instance_name: state.instance.name || null,
+    last_disconnect_reason: state.instance.lastDisconnectReason || null,
+  }
+}
+
+/** Mensagens de erro por motivo — a UI traduz pela chave `reason`. */
+export const UAZAPI_ERROR_MESSAGE: Record<UazapiConfigError, string> = {
+  no_config: 'No UAZAPI instance token saved for this account.',
+  wrong_provider: 'This account is configured for the Meta provider.',
+  token_corrupted:
+    'The stored instance token cannot be decrypted with the current ENCRYPTION_KEY. Remove the configuration and paste the token again.',
 }
