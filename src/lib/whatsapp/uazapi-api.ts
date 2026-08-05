@@ -324,3 +324,42 @@ export async function setWebhook(args: SetWebhookArgs): Promise<UazapiWebhookCon
     events: Array.isArray(w.events) ? (w.events as string[]) : [],
   }
 }
+
+// ============================================================
+// Mídia recebida (usado a partir da Fase 3)
+// ============================================================
+
+export interface DownloadMediaArgs extends InstanceTokenArgs {
+  /** `messageid` do payload de entrada. */
+  messageId: string
+}
+
+/**
+ * Resolve a URL do arquivo de uma mensagem de mídia recebida.
+ *
+ * Na v1 o arquivo vinha em base64 dentro do webhook, o que estourava o
+ * limite de corpo da hospedagem e tirava "receber mídia" do escopo. Na
+ * v2 o webhook traz só metadados e o arquivo é buscado aqui — a
+ * requisição parte de nós, então não há limite de corpo de entrada.
+ *
+ * Usamos `fileURL`. A resposta também pode trazer `base64Data` (com
+ * "Data" no fim — `base64` puro não existe e devolve undefined).
+ */
+export async function downloadMessageMedia(
+  args: DownloadMediaArgs
+): Promise<{ fileUrl: string; mimeType: string }> {
+  const { token, messageId } = args
+  const data = await uazapiFetch('/message/download', token, {
+    method: 'POST',
+    body: { id: messageId },
+  })
+  const d = data as Record<string, unknown>
+  const fileUrl = typeof d?.fileURL === 'string' ? d.fileURL : ''
+  if (!fileUrl) {
+    throw new Error('UAZAPI returned no file url for this message.')
+  }
+  return {
+    fileUrl,
+    mimeType: typeof d.mimetype === 'string' ? d.mimetype : 'application/octet-stream',
+  }
+}

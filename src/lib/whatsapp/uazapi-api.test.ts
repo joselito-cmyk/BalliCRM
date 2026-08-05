@@ -10,6 +10,7 @@ import {
   sendText,
   sendMedia,
   setWebhook,
+  downloadMessageMedia,
 } from './uazapi-api'
 import { hashInstanceToken } from './uazapi-token'
 
@@ -261,5 +262,30 @@ describe('setWebhook', () => {
     await expect(
       setWebhook({ token: TOKEN, url: 'https://a', events: [] })
     ).rejects.toThrow(/unexpected response/i)
+  })
+})
+
+describe('downloadMessageMedia', () => {
+  it('posta em /message/download com o id da mensagem', async () => {
+    const f = mockFetchOnce({ fileURL: 'https://cdn.uazapi/x.jpg', mimetype: 'image/jpeg' })
+    vi.stubGlobal('fetch', f)
+
+    const r = await downloadMessageMedia({ token: TOKEN, messageId: 'ABC123' })
+
+    const [url, init] = f.mock.calls[0]
+    expect(url).toBe(`${ENDPOINT}/message/download`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ id: 'ABC123' })
+    expect(r.fileUrl).toBe('https://cdn.uazapi/x.jpg')
+    expect(r.mimeType).toBe('image/jpeg')
+  })
+
+  // Armadilha documentada: o campo é base64Data, NÃO base64. E o que
+  // usamos é fileURL — ler `base64` devolveria undefined sempre.
+  it('falha claro quando não vem fileURL', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ base64: 'AAAA' }))
+    await expect(
+      downloadMessageMedia({ token: TOKEN, messageId: 'X' })
+    ).rejects.toThrow(/no file url/i)
   })
 })

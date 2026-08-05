@@ -88,6 +88,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'ignored' }, { status: 200 })
   }
 
+  if (parsed.kind === 'message') {
+    const t = parsed.message.contentType
+    if (t === 'image' || t === 'video' || t === 'audio' || t === 'document') {
+      // O arquivo é resolvido sob demanda pela rota de proxy; aqui só
+      // gravamos o caminho. Assim uma URL temporária da UAZAPI nunca
+      // vaza para o banco nem expira dentro de uma mensagem salva.
+      parsed.message.mediaUrl = `/api/whatsapp/uazapi/media/${encodeURIComponent(parsed.message.providerMessageId)}`
+    }
+  }
+
   // Processa DEPOIS de responder, como o webhook da Meta faz: em
   // serverless a função pode ser congelada assim que a resposta sai, e
   // uma promise solta perderia as escritas. `after()` mantém viva.
