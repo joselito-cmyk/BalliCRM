@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,22 @@ import {
 } from "@/components/ui/card";
 import { MessageSquare, CheckCircle, ArrowLeft } from "lucide-react";
 
+// `useSearchParams` opts the component out of static prerendering
+// unless wrapped in Suspense — same pattern as /login and /signup.
+// Without this, `next build` tries to execute ForgotPasswordPageInner
+// (including `createClient()`) at build time, which throws if
+// NEXT_PUBLIC_SUPABASE_URL/ANON_KEY aren't present in that environment.
 export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ForgotPasswordPageInner />
+    </Suspense>
+  );
+}
+
+function ForgotPasswordPageInner() {
+  // Return value unused — the call itself is what triggers the bailout.
+  useSearchParams();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
