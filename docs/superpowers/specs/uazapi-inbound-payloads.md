@@ -151,10 +151,27 @@ verdade.
    como campos (vazios aqui) — confirma que a documentação da comunidade
    acertou os nomes dos campos, mesmo sem um teste real de toque em botão.
 
-## Ainda não verificado após esta captura
+## Verificação de aceite ponta a ponta (2026-08-05, pós-deploy)
 
-- Legenda em mensagem de mídia (nenhuma foi enviada com legenda no teste).
+Com Tasks 1-6 implantadas em produção, um segundo round de mensagens reais
+confirmou o pipeline completo, não só a captura de payload:
+
+- **Texto recebido** → apareceu na Caixa de Entrada do CRM, correto.
+- **Imagem recebida, com legenda** ("Câmbio") → a imagem renderizou e **a
+  legenda apareceu junto** (embaixo da foto, como o WhatsApp normalmente
+  mostra). Isso confirma a suposição da seção anterior: a legenda vem em
+  `message.text` (o mesmo campo do texto puro), não em outro lugar do
+  objeto `content`. Item antes listado como "não verificado" — agora
+  **confirmado**.
+- **Áudio recebido** → tocou corretamente pela interface do CRM (proxy de
+  mídia funcionando ponta a ponta, decriptação da UAZAPI incluída).
+- **Texto enviado pelo CRM** → chegou de verdade no celular pessoal (não só
+  o ✓ de "enviado" na tela — confirmado no aparelho).
+
+## Ainda não verificado
+
 - Forma de `quoted` quando há resposta a uma mensagem anterior.
 - Forma de `reaction`/`messageType` quando é uma reação de verdade.
 - Payload do evento `connection` (só `messages` foi capturado).
 - Mensagem de documento e de localização (só texto, imagem e áudio testados).
+- Envio de mídia pelo CRM (só envio de texto foi testado ao vivo nesta rodada).
