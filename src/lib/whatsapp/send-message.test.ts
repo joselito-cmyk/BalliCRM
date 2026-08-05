@@ -6,6 +6,7 @@ import {
   SendMessageError,
   type SendMessageParams,
 } from './send-message';
+import { encrypt } from './encryption';
 
 // A db that explodes if touched — these tests cover the param
 // validation that MUST short-circuit before any query runs.
@@ -158,7 +159,7 @@ describe('sendMessageToConversation — provider guard', () => {
       from(table: string) {
         const b: Record<string, unknown> = {};
         const chain = () => b;
-        for (const m of ['select', 'eq']) b[m] = vi.fn(chain);
+        for (const m of ['select', 'eq', 'insert', 'update']) b[m] = vi.fn(chain);
         b.single = vi.fn(async () =>
           table === 'conversations'
             ? {
@@ -183,12 +184,16 @@ describe('sendMessageToConversation — provider guard', () => {
     contentText: 'oi',
   };
 
-  it('raises a typed SendMessageError when the account is on UAZAPI', async () => {
+  // A conta UAZAPI sem instance_token configurado ainda precisa recusar com
+  // um erro tipado (não o TypeError cru que `decrypt(null)` geraria) — a
+  // rota de sucesso (instance_token presente) passa a rotear de verdade
+  // desde esta task, coberta pelo teste "roteia envio de texto…" abaixo.
+  it('raises a typed SendMessageError when the account is on UAZAPI without an instance token', async () => {
     const db = dbWithConfig({
       id: 'cfg-1',
       provider: 'uazapi',
       access_token: null,
-      uazapi_instance_token: 'enc-instance-token',
+      uazapi_instance_token: null,
     });
     await expect(
       sendMessageToConversation(db, 'acct-1', params)
@@ -196,21 +201,78 @@ describe('sendMessageToConversation — provider guard', () => {
     await sendMessageToConversation(db, 'acct-1', params).catch(
       (e: SendMessageError) => {
         expect(e).not.toBeInstanceOf(TypeError);
-        expect(e.code).toBe('wrong_provider');
+        expect(e.code).toBe('whatsapp_not_configured');
         expect(e.status).toBe(400);
-        expect(e.message).toMatch(/different provider/i);
+        expect(e.message).toMatch(/UAZAPI instance not configured/i);
       }
     );
   });
 
-  it('raises the same typed error for a meta row with a null access_token', async () => {
+  it('raises a typed error (not wrong_provider) for a meta row with a null access_token', async () => {
     const db = dbWithConfig({ id: 'cfg-1', provider: 'meta', access_token: null });
     await sendMessageToConversation(db, 'acct-1', params).catch(
       (e: SendMessageError) => {
         expect(e).toBeInstanceOf(SendMessageError);
-        expect(e.code).toBe('wrong_provider');
+        expect(e).not.toBeInstanceOf(TypeError);
+        expect(e.code).toBe('whatsapp_not_configured');
+        expect(e.status).toBe(400);
       }
     );
+  });
+
+  it('roteia envio de texto para UAZAPI quando a conta usa esse provedor', async () => {
+    const db = dbWithConfig({
+      id: 'cfg-1',
+      provider: 'uazapi',
+      access_token: null,
+      uazapi_instance_token: encrypt('tok-instancia'),
+    });
+    const calls: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: { body: string }) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return { ok: true, status: 200, json: async () => ({ messageid: 'UAZ-1' }) };
+    }));
+
+    await sendMessageToConversation(db, 'acct-1', params);
+
+    expect(calls[0].url).toContain('/send/text');
+    expect(calls[0].body).toMatchObject({ number: expect.any(String), text: expect.any(String) });
+  });
+
+  it('recusa template pelo UAZAPI mesmo com instance token configurado', async () => {
+    const db = dbWithConfig({
+      id: 'cfg-1',
+      provider: 'uazapi',
+      access_token: null,
+      uazapi_instance_token: encrypt('tok-instancia'),
+    });
+    await expect(
+      sendMessageToConversation(db, 'acct-1', {
+        conversationId: 'cv-1',
+        messageType: 'template',
+        templateName: 'oi_cliente',
+      })
+    ).rejects.toMatchObject({ code: 'wrong_provider' });
+  });
+
+  it('recusa interactive pelo UAZAPI mesmo com instance token configurado', async () => {
+    const db = dbWithConfig({
+      id: 'cfg-1',
+      provider: 'uazapi',
+      access_token: null,
+      uazapi_instance_token: encrypt('tok-instancia'),
+    });
+    await expect(
+      sendMessageToConversation(db, 'acct-1', {
+        conversationId: 'cv-1',
+        messageType: 'interactive',
+        interactivePayload: {
+          kind: 'buttons',
+          body: 'Escolha uma opção',
+          buttons: [{ id: 'a', title: 'A' }],
+        },
+      })
+    ).rejects.toMatchObject({ code: 'wrong_provider' });
   });
 });
 

@@ -10,6 +10,10 @@ import {
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
+  sendText as providerSendText,
+  sendMedia as providerSendMedia,
+} from '@/lib/whatsapp/provider'
+import {
   sanitizePhoneForMeta,
   isValidE164,
   phoneVariants,
@@ -47,6 +51,31 @@ function assertMetaConfig(config: { provider?: string | null; access_token?: str
     throw new Error(
       'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable for this account',
     )
+  }
+}
+
+/**
+ * Guard for `engineSendText` / `engineSendMedia` — the two functions in
+ * this file with a UAZAPI equivalent. Unlike `assertMetaConfig` above
+ * (kept Meta-only for the interactive senders), this allows a
+ * well-configured UAZAPI account through so the caller can route the
+ * actual send via `provider.ts` instead of `meta-api.ts`.
+ */
+function assertSendableConfig(config: {
+  provider?: string | null
+  access_token?: string | null
+  uazapi_instance_token?: string | null
+}): void {
+  if (config.provider !== 'meta' && config.provider !== 'uazapi') {
+    throw new Error(`Unknown WhatsApp provider "${config.provider}".`)
+  }
+  if (config.provider === 'meta' && !config.access_token) {
+    throw new Error(
+      'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable for this account',
+    )
+  }
+  if (config.provider === 'uazapi' && !config.uazapi_instance_token) {
+    throw new Error('UAZAPI instance not configured for this account')
   }
 }
 
@@ -108,9 +137,9 @@ export async function engineSendText(
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
-  assertMetaConfig(config)
+  assertSendableConfig(config)
 
-  const accessToken = decrypt(config.access_token)
+  const accessToken = config.provider === 'meta' ? decrypt(config.access_token) : ''
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await sendTextMessage({
@@ -122,23 +151,31 @@ export async function engineSendText(
     return r.messageId
   }
 
-  const variants = phoneVariants(sanitized)
   let workingPhone = sanitized
   let waMessageId = ''
-  let lastError: unknown = null
-  for (const v of variants) {
-    try {
-      waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+
+  if (config.provider === 'uazapi') {
+    // Uma tentativa só — a UAZAPI não tem a rejeição de dígito 9 que
+    // justifica o retry de variantes da Meta.
+    const result = await providerSendText(config, { to: sanitized, text: args.text })
+    waMessageId = result.messageId
+  } else {
+    const variants = phoneVariants(sanitized)
+    let lastError: unknown = null
+    for (const v of variants) {
+      try {
+        waMessageId = await attempt(v)
+        workingPhone = v
+        lastError = null
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!isRecipientNotAllowedError(msg)) throw err
+        lastError = err
+      }
     }
+    if (lastError) throw lastError
   }
-  if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
@@ -219,9 +256,9 @@ export async function engineSendMedia(
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
-  assertMetaConfig(config)
+  assertSendableConfig(config)
 
-  const accessToken = decrypt(config.access_token)
+  const accessToken = config.provider === 'meta' ? decrypt(config.access_token) : ''
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await sendMediaMessage({
@@ -236,23 +273,37 @@ export async function engineSendMedia(
     return r.messageId
   }
 
-  const variants = phoneVariants(sanitized)
   let workingPhone = sanitized
   let waMessageId = ''
-  let lastError: unknown = null
-  for (const v of variants) {
-    try {
-      waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+
+  if (config.provider === 'uazapi') {
+    // Uma tentativa só — a UAZAPI não tem a rejeição de dígito 9 que
+    // justifica o retry de variantes da Meta.
+    const result = await providerSendMedia(config, {
+      to: sanitized,
+      kind: args.kind,
+      link: args.link,
+      caption: args.caption,
+      filename: args.filename,
+    })
+    waMessageId = result.messageId
+  } else {
+    const variants = phoneVariants(sanitized)
+    let lastError: unknown = null
+    for (const v of variants) {
+      try {
+        waMessageId = await attempt(v)
+        workingPhone = v
+        lastError = null
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!isRecipientNotAllowedError(msg)) throw err
+        lastError = err
+      }
     }
+    if (lastError) throw lastError
   }
-  if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)

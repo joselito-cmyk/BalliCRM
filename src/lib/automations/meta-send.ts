@@ -5,6 +5,7 @@ import {
   engineSendInteractiveList,
 } from '@/lib/flows/meta-send'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { sendText as providerSendText } from '@/lib/whatsapp/provider'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -139,16 +140,28 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
+  // Provider guard, by message kind: templates have no UAZAPI
+  // equivalent, so they refuse for any non-Meta account regardless of
+  // whether a uazapi_instance_token is configured.
+  if (input.kind === 'template' && config.provider !== 'meta') {
+    throw new Error(
+      'Templates are only available on the Meta provider. Reconnect Meta in Settings.',
+    )
+  }
+  if (config.provider !== 'meta' && config.provider !== 'uazapi') {
+    throw new Error(`Unknown WhatsApp provider "${config.provider}".`)
+  }
   // Switching an account to UAZAPI reuses this row and nulls every
   // Meta column, so the decrypt below would throw a raw TypeError.
   // Plain Error matches how this module reports config problems.
-  if (config.provider !== 'meta' || !config.access_token) {
-    throw new Error(
-      'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable for this account',
-    )
+  if (config.provider === 'meta' && !config.access_token) {
+    throw new Error('WhatsApp not configured for this account')
+  }
+  if (config.provider === 'uazapi' && !config.uazapi_instance_token) {
+    throw new Error('UAZAPI instance not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
+  const accessToken = config.provider === 'meta' ? decrypt(config.access_token) : ''
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
@@ -171,26 +184,41 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     return r.messageId
   }
 
-  // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
-  // numbers registered with/without a trunk 0 both require this to
-  // reliably land a message.
-  const variants = phoneVariants(sanitized)
   let workingPhone = sanitized
   let waMessageId = ''
-  let lastError: unknown = null
-  for (const v of variants) {
-    try {
-      waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+
+  if (config.provider === 'uazapi') {
+    // Uma tentativa só — a UAZAPI não tem a rejeição de dígito 9 que
+    // justifica o retry de variantes da Meta. Template já foi recusado
+    // acima para non-Meta, então só existe `kind: 'text'` chegando aqui
+    // (o `if` abaixo só existe para manter o TS honesto — inalcançável).
+    if (input.kind !== 'text') {
+      throw new Error(
+        'Templates are only available on the Meta provider. Reconnect Meta in Settings.',
+      )
     }
+    const result = await providerSendText(config, { to: sanitized, text: input.text })
+    waMessageId = result.messageId
+  } else {
+    // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
+    // numbers registered with/without a trunk 0 both require this to
+    // reliably land a message.
+    const variants = phoneVariants(sanitized)
+    let lastError: unknown = null
+    for (const v of variants) {
+      try {
+        waMessageId = await attempt(v)
+        workingPhone = v
+        lastError = null
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!isRecipientNotAllowedError(msg)) throw err
+        lastError = err
+      }
+    }
+    if (lastError) throw lastError
   }
-  if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)

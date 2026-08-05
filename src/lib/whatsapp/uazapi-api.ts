@@ -272,3 +272,55 @@ export async function sendMedia(args: UazapiSendMediaArgs): Promise<UazapiSendRe
   const data = await uazapiFetch('/send/media', token, { method: 'POST', body })
   return parseSendResult(data)
 }
+
+// ============================================================
+// Webhook (usado a partir da Fase 3)
+// ============================================================
+
+/** Eventos que a UAZAPI sabe emitir. Só usamos os dois primeiros. */
+export type UazapiWebhookEvent =
+  | 'messages' | 'connection' | 'presence' | 'group' | 'chat' | 'poll' | 'label'
+
+export interface UazapiWebhookConfig {
+  id: string
+  url: string
+  enabled: boolean
+  events: string[]
+}
+
+export interface SetWebhookArgs extends InstanceTokenArgs {
+  /** URL pública. A UAZAPI não alcança localhost. */
+  url: string
+  events: UazapiWebhookEvent[]
+}
+
+/**
+ * Registra (ou atualiza) o webhook da instância.
+ *
+ * Verificado ao vivo: é UPSERT, não create. Um POST com URL diferente
+ * mantém o mesmo `id` e substitui a URL — existe no máximo uma entrada
+ * por instância. Logo, chamar isto a cada conexão é idempotente e não
+ * acumula webhooks órfãos.
+ *
+ * Também verificado: a resposta é um ARRAY de um elemento (a doc sugere
+ * objeto), e `DELETE /webhook` não existe (405) — para desligar, poste
+ * `{ url: '', events: [], enabled: false }`.
+ */
+export async function setWebhook(args: SetWebhookArgs): Promise<UazapiWebhookConfig> {
+  const { token, url, events } = args
+  const data = await uazapiFetch('/webhook', token, {
+    method: 'POST',
+    body: { url, events, enabled: true },
+  })
+  const first = Array.isArray(data) ? data[0] : null
+  if (!first || typeof first !== 'object') {
+    throw new Error('UAZAPI returned an unexpected response shape for setWebhook.')
+  }
+  const w = first as Record<string, unknown>
+  return {
+    id: typeof w.id === 'string' ? w.id : '',
+    url: typeof w.url === 'string' ? w.url : '',
+    enabled: w.enabled === true,
+    events: Array.isArray(w.events) ? (w.events as string[]) : [],
+  }
+}

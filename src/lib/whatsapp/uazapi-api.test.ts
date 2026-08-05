@@ -9,6 +9,7 @@ import {
   disconnectInstance,
   sendText,
   sendMedia,
+  setWebhook,
 } from './uazapi-api'
 import { hashInstanceToken } from './uazapi-token'
 
@@ -216,5 +217,49 @@ describe('sendMedia', () => {
     await expect(
       sendMedia({ token: TOKEN, number: '55', kind: 'image', path: '' }),
     ).rejects.toThrow(/path/i)
+  })
+})
+
+describe('setWebhook', () => {
+  it('posta em /webhook com url, events e enabled', async () => {
+    const f = mockFetchOnce([{
+      id: 'r458e3509defb83',
+      url: 'https://app.example/hook',
+      enabled: true,
+      events: ['messages'],
+      addUrlEvents: false,
+      addUrlTypesMessages: false,
+      excludeMessages: [],
+    }])
+    vi.stubGlobal('fetch', f)
+
+    const r = await setWebhook({ token: TOKEN, url: 'https://app.example/hook', events: ['messages'] })
+
+    const [url, init] = f.mock.calls[0]
+    expect(url).toBe(`${ENDPOINT}/webhook`)
+    expect(init.method).toBe('POST')
+    expect(init.headers.token).toBe(TOKEN)
+    expect(JSON.parse(init.body)).toEqual({
+      url: 'https://app.example/hook',
+      events: ['messages'],
+      enabled: true,
+    })
+    expect(r.url).toBe('https://app.example/hook')
+    expect(r.enabled).toBe(true)
+  })
+
+  // Contrato verificado ao vivo: a resposta é um ARRAY de um elemento,
+  // não um objeto. Ler `data.url` direto devolveria undefined.
+  it('extrai o primeiro elemento do array de resposta', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce([{ id: 'x', url: 'https://a', enabled: true, events: [] }]))
+    const r = await setWebhook({ token: TOKEN, url: 'https://a', events: [] })
+    expect(r.id).toBe('x')
+  })
+
+  it('falha claro se a UAZAPI devolver array vazio', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce([]))
+    await expect(
+      setWebhook({ token: TOKEN, url: 'https://a', events: [] })
+    ).rejects.toThrow(/unexpected response/i)
   })
 })
