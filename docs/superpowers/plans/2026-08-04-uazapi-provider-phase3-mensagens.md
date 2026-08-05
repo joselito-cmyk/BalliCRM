@@ -1542,88 +1542,175 @@ Esperado: `routedBy: "token"` (confirma que o roteamento por token funciona) e
   - `parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null`
   - `type ParsedUazapiInbound = { kind: 'message'; message: NormalizedInboundMessage } | { kind: 'reaction'; reaction: NormalizedInboundReaction }`
 
-> **Pré-requisito obrigatório:** `docs/superpowers/specs/uazapi-inbound-payloads.md`
-> existe e contém pelo menos o payload de texto capturado ao vivo. Se não
-> existir, **pare** e conclua o checkpoint da Task 3. Escrever este parser sem
-> ele repete exatamente o erro da Fase 1.
+> **Pré-requisito cumprido:** `docs/superpowers/specs/uazapi-inbound-payloads.md`
+> existe, com três payloads reais capturados em produção (texto, imagem,
+> áudio) em 2026-08-05. **O código abaixo já reflete esses payloads reais** —
+> não é mais especulação. Onde a Task 3 tinha suposto nomes de campo errados
+> (`timestamp` em vez de `messageTimestamp`, `quotedMessageId` em vez de
+> `quoted`), já está corrigido aqui.
+>
+> Três coisas ficaram **sem verificação** mesmo depois da captura — a foto
+> enviada não tinha legenda, e nenhuma reação nem resposta citada foi
+> testada. O parser trata esses casos com o candidato mais plausível
+> (comentado no código), não com certeza — ver a seção "Ainda não
+> verificado" do arquivo de captura.
 
 - [ ] **Step 1: Escrever os testes contra os payloads capturados**
 
-Crie `src/lib/whatsapp/uazapi-inbound.test.ts`. **Cole o payload real
-capturado** como fixture — não invente um. O exemplo abaixo usa a forma que a
-documentação da comunidade descreve; substitua campo a campo pelo que o arquivo
-de captura mostrar, e ajuste as asserções.
+Crie `src/lib/whatsapp/uazapi-inbound.test.ts`. As fixtures abaixo são os
+payloads reais de
+`docs/superpowers/specs/uazapi-inbound-payloads.md`, com os campos irrelevantes
+de `chat` (as ~40 colunas `lead_*`, `wa_*`) removidos para legibilidade — só os
+campos que o parser lê estão aqui.
 
 ```ts
 import { describe, it, expect } from 'vitest'
 import { parseUazapiInbound } from './uazapi-inbound'
 
-// ⚠️ SUBSTITUA por docs/superpowers/specs/uazapi-inbound-payloads.md
+// Payload real de texto, capturado em produção em 2026-08-05
+// (docs/superpowers/specs/uazapi-inbound-payloads.md).
 const textPayload = {
-  owner: '5521984379771',
+  BaseUrl: 'https://balligroup.uazapi.com',
+  EventType: 'messages',
   instanceName: 'Novo Rio',
+  owner: '5521984379771',
   token: 'b0223b8a-f1e5-4d2e-9894-dbfc53c1dec9',
-  chat: { phone: '5511999998888', name: 'Cliente Teste', owner: '5521984379771' },
+  chat: { name: 'Joselito', owner: '5521984379771' },
   message: {
-    messageid: 'ABC123',
-    chatid: '5511999998888@s.whatsapp.net',
-    sender: '5511999998888@s.whatsapp.net',
-    sender_pn: '5511999998888',
+    id: '5521984379771:3EB08AE438DA9A60CE0F1C',
+    messageid: '3EB08AE438DA9A60CE0F1C',
+    chatid: '557581076740@s.whatsapp.net',
+    sender: '30545824219325@lid',
+    sender_pn: '557581076740@s.whatsapp.net',
+    senderName: 'Joselito',
     owner: '5521984379771',
     fromMe: false,
     isGroup: false,
-    type: 'conversation',
-    text: 'oi tudo bem',
-    timestamp: 1785000000,
+    type: 'text',
+    mediaType: '',
+    messageType: 'Conversation',
+    messageTimestamp: 1785921889000,
+    text: 'teste 1',
+    content: 'teste 1',
+    quoted: '',
+    reaction: '',
+    vote: '',
+    buttonOrListid: '',
+  },
+}
+
+// Payload real de imagem — mesma casca, `content` vira objeto, sem legenda
+// (a foto de teste não tinha uma — ver nota "Ainda não verificado").
+const imagePayload = {
+  ...textPayload,
+  message: {
+    ...textPayload.message,
+    id: '5521984379771:3EB0C4ED0F216235E7AF1C',
+    messageid: '3EB0C4ED0F216235E7AF1C',
+    type: 'media',
+    mediaType: 'image',
+    messageType: 'ImageMessage',
+    messageTimestamp: 1785921906000,
+    text: '',
+    content: { URL: 'https://mmg.whatsapp.net/...', mimetype: 'image/jpeg' },
+  },
+}
+
+// Payload real de áudio — mediaType é "ptt", NÃO "audio".
+const audioPayload = {
+  ...textPayload,
+  message: {
+    ...textPayload.message,
+    id: '5521984379771:3A7F9ED2A67660672895',
+    messageid: '3A7F9ED2A67660672895',
+    type: 'media',
+    mediaType: 'ptt',
+    messageType: 'AudioMessage',
+    messageTimestamp: 1785921926000,
+    text: '',
+    content: { URL: 'https://mmg.whatsapp.net/...', mimetype: 'audio/ogg; codecs=opus' },
   },
 }
 
 describe('parseUazapiInbound', () => {
-  it('extrai uma mensagem de texto', () => {
+  it('extrai uma mensagem de texto (payload real capturado)', () => {
     const r = parseUazapiInbound(textPayload)
-    expect(r?.kind).toBe('message')
     if (r?.kind !== 'message') throw new Error('esperava message')
-    expect(r.message.providerMessageId).toBe('ABC123')
-    expect(r.message.from).toBe('5511999998888')
-    expect(r.message.contactName).toBe('Cliente Teste')
+    // messageid "puro", sem o prefixo "<instância>:" que `id` carrega.
+    expect(r.message.providerMessageId).toBe('3EB08AE438DA9A60CE0F1C')
+    expect(r.message.from).toBe('557581076740')
+    expect(r.message.contactName).toBe('Joselito')
     expect(r.message.contentType).toBe('text')
-    expect(r.message.contentText).toBe('oi tudo bem')
+    expect(r.message.contentText).toBe('teste 1')
+    expect(r.message.sentAt.getTime()).toBe(1785921889000)
   })
 
-  // Armadilha documentada: `sender` pode vir como @lid (id interno do
-  // WhatsApp) em vez do telefone. `sender_pn` é o número de verdade.
-  it('prefere sender_pn quando sender vem como @lid', () => {
+  it('extrai uma imagem — mediaType manda, mesmo com content como objeto', () => {
+    const r = parseUazapiInbound(imagePayload)
+    if (r?.kind !== 'message') throw new Error('esperava message')
+    expect(r.message.contentType).toBe('image')
+    // content é objeto aqui — nunca deve virar contentText.
+    expect(r.message.contentText).toBeNull()
+  })
+
+  // Armadilha confirmada ao vivo: mediaType de áudio é "ptt", não "audio".
+  it('mapeia mediaType "ptt" para audio', () => {
+    const r = parseUazapiInbound(audioPayload)
+    if (r?.kind !== 'message') throw new Error('esperava message')
+    expect(r.message.contentType).toBe('audio')
+  })
+
+  // Armadilha confirmada ao vivo: sender_pn TEM o sufixo @s.whatsapp.net
+  // (a documentação da comunidade dizia que vinha "puro" — não vem).
+  it('remove o sufixo @s.whatsapp.net de sender_pn', () => {
+    const r = parseUazapiInbound(textPayload)
+    if (r?.kind !== 'message') throw new Error('esperava message')
+    expect(r.message.from).toBe('557581076740')
+    expect(r.message.from).not.toContain('@')
+  })
+
+  // Armadilha confirmada ao vivo: `sender` vem como @lid; sender_pn é o
+  // número de verdade — mas TAMBÉM tem sufixo (coberto pelo teste acima).
+  it('ignora sender (@lid) e usa sender_pn', () => {
     const r = parseUazapiInbound({
       ...textPayload,
-      message: { ...textPayload.message, sender: '123456789@lid', sender_pn: '5511777776666' },
+      message: { ...textPayload.message, sender: '999999999@lid', sender_pn: '5511777776666@s.whatsapp.net' },
     })
     if (r?.kind !== 'message') throw new Error('esperava message')
     expect(r.message.from).toBe('5511777776666')
   })
 
-  // Armadilha documentada: timestamp vem em segundos OU milissegundos.
-  it('aceita timestamp em segundos e em milissegundos', () => {
-    const seg = parseUazapiInbound({ ...textPayload, message: { ...textPayload.message, timestamp: 1785000000 } })
-    const ms = parseUazapiInbound({ ...textPayload, message: { ...textPayload.message, timestamp: 1785000000000 } })
-    if (seg?.kind !== 'message' || ms?.kind !== 'message') throw new Error('esperava message')
-    expect(seg.message.sentAt.getTime()).toBe(ms.message.sentAt.getTime())
+  // Confirmado ao vivo: messageTimestamp vem em milissegundos (13 dígitos).
+  // O parser mantém a heurística >1e12 por segurança (mesma do resto do
+  // apêndice), mas o valor real observado sempre foi ms.
+  it('lê messageTimestamp (não timestamp) em milissegundos', () => {
+    const r = parseUazapiInbound(textPayload)
+    if (r?.kind !== 'message') throw new Error('esperava message')
+    expect(r.message.sentAt.toISOString()).toBe(new Date(1785921889000).toISOString())
   })
 
-  // Nossa própria mensagem ecoada de volta não pode virar mensagem
-  // recebida — duplicaria a thread.
   it('ignora mensagens enviadas por nós (fromMe)', () => {
-    expect(parseUazapiInbound({ ...textPayload, message: { ...textPayload.message, fromMe: true } })).toBeNull()
+    expect(parseUazapiInbound({
+      ...textPayload,
+      message: { ...textPayload.message, fromMe: true },
+    })).toBeNull()
   })
 
   it('ignora mensagens de grupo', () => {
-    expect(parseUazapiInbound({ ...textPayload, message: { ...textPayload.message, isGroup: true } })).toBeNull()
+    expect(parseUazapiInbound({
+      ...textPayload,
+      message: { ...textPayload.message, isGroup: true },
+    })).toBeNull()
   })
 
   it('devolve null para payload sem mensagem (ex.: evento connection)', () => {
-    expect(parseUazapiInbound({ owner: '55', instanceName: 'x', token: 't' })).toBeNull()
+    expect(parseUazapiInbound({ owner: '55', instanceName: 'x', token: 't', EventType: 'connection' })).toBeNull()
   })
 
-  it('mapeia resposta de botão para interactive', () => {
+  // Não verificado ao vivo (nenhum toque em botão foi testado) — os nomes
+  // de campo (`buttonOrListid`, `vote`) vêm confirmados como EXISTENTES
+  // nos payloads reais (vazios lá), mas o valor populado é inferência.
+  it('mapeia resposta de botão para interactive (campos confirmados, valor inferido)', () => {
     const r = parseUazapiInbound({
       ...textPayload,
       message: {
@@ -1656,14 +1743,26 @@ Esperado: FAIL — `parseUazapiInbound is not a function`.
  * I/O (baixar mídia) fica na rota. Isso é o que torna o parser testável
  * contra payloads capturados de verdade.
  *
- * Armadilhas confirmadas em integrações reais, todas cobertas aqui:
- *   - `owner`, nos três níveis, é o número da PRÓPRIA instância, nunca
- *     o remetente nem o dono de um grupo.
- *   - `sender` pode vir como `<id>@lid`; o número real está em
- *     `sender_pn`.
- *   - `type` costuma vir genérico ('media'); o tipo real está em
- *     `mediaType`.
- *   - `timestamp` pode ser segundos ou milissegundos.
+ * Campos confirmados contra 3 payloads reais (texto, imagem, áudio —
+ * ver docs/superpowers/specs/uazapi-inbound-payloads.md):
+ *   - `owner`, em todos os níveis, é o número da PRÓPRIA instância, nunca
+ *     o remetente. Não usar para identificar quem mandou a mensagem.
+ *   - `sender` vem como `<id>@lid`; o número de verdade está em
+ *     `sender_pn` — que TEM o sufixo `@s.whatsapp.net` (a documentação
+ *     da comunidade dizia que vinha "puro"; não vem).
+ *   - `type` vem genérico ('media') para qualquer mídia; o tipo real
+ *     está em `mediaType` — e para áudio o valor é `'ptt'`, não
+ *     `'audio'`.
+ *   - O campo de data é `messageTimestamp` (não `timestamp`), sempre em
+ *     milissegundos nas capturas reais — mas a heurística `>1e12`
+ *     continua aplicada por segurança.
+ *   - `content` é uma STRING para texto (duplica `text`) e um OBJETO
+ *     para mídia (`URL`, `mimetype`, `mediaKey`, …) — nunca ler
+ *     `content` como texto sem checar o tipo primeiro.
+ *   - Resposta citada é `quoted` (não `quotedMessageId`); reação é
+ *     `reaction` — ambos strings vazias quando não aplicável. A FORMA
+ *     quando populados não foi verificada ao vivo (nenhum teste real
+ *     de resposta citada ou reação foi capturado).
  */
 
 import type {
@@ -1685,7 +1784,7 @@ function toDate(ts: unknown): Date {
   return new Date(n > 1e12 ? n : n * 1000)
 }
 
-/** Telefone da outra parte, só dígitos. */
+/** Telefone da outra parte, só dígitos — sender_pn sempre tem sufixo @…, remover. */
 function senderPhone(m: Record<string, unknown>): string {
   const pn = str(m.sender_pn)
   const raw = pn || str(m.sender) || str(m.chatid)
@@ -1705,6 +1804,16 @@ function contentTypeOf(m: Record<string, unknown>): InboundContentType {
   return 'text'
 }
 
+/**
+ * `content` é string quando é texto puro (duplica `text`) e objeto
+ * quando é mídia — nunca usar como contentText sem essa checagem.
+ */
+function textOf(m: Record<string, unknown>): string | null {
+  if (typeof m.text === 'string' && m.text) return m.text
+  if (typeof m.content === 'string' && m.content) return m.content
+  return null
+}
+
 export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null {
   const p = payload as Record<string, unknown> | null
   const m = p?.message as Record<string, unknown> | undefined
@@ -1714,6 +1823,7 @@ export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null
   if (m.fromMe === true) return null
   if (m.isGroup === true) return null
 
+  // messageid é o id "puro"; `id` vem prefixado com "<instância>:".
   const providerMessageId = str(m.messageid) || str(m.id)
   if (!providerMessageId) return null
 
@@ -1721,12 +1831,15 @@ export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null
   if (!from) return null
 
   const chat = (p?.chat as Record<string, unknown> | undefined) ?? {}
-  const contactName = str(chat.name) || str(m.senderName) || ''
+  const contactName = str(m.senderName) || str(chat.name) || ''
 
-  // Reação: vira estado, não mensagem.
+  // Reação: vira estado, não mensagem. NÃO VERIFICADO AO VIVO — nenhuma
+  // reação real foi capturada; `messageType` provavelmente vira algo como
+  // "ReactionMessage" por analogia com ImageMessage/AudioMessage, mas isso
+  // é inferência.
   const messageType = str(m.messageType)
   if (messageType === 'ReactionMessage' || str(m.type) === 'reaction') {
-    const target = str(m.reactionTargetId) || str((m.reaction as Record<string, unknown> | undefined)?.key)
+    const target = str(m.quoted) || str(m.reaction)
     if (!target) return null
     return {
       kind: 'reaction',
@@ -1734,12 +1847,13 @@ export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null
         from,
         contactName,
         targetProviderMessageId: target,
-        emoji: str(m.text) || str(m.body) || '',
+        emoji: str(m.reaction) || '',
       },
     }
   }
 
-  // Toque em botão / linha de lista.
+  // Toque em botão / linha de lista. Nomes de campo confirmados (existem
+  // vazios nos 3 payloads reais); valor quando populado não testado.
   const isInteractive =
     messageType === 'ButtonsResponseMessage' || messageType === 'ListResponseMessage'
   if (isInteractive) {
@@ -1750,19 +1864,19 @@ export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null
         providerMessageId,
         from,
         contactName,
-        sentAt: toDate(m.timestamp),
+        sentAt: toDate(m.messageTimestamp),
         contentType: 'interactive',
         contentText: str(m.vote) || replyId || null,
         mediaUrl: null,
         interactiveReplyId: replyId || null,
-        replyToProviderMessageId: str(m.quotedMessageId) || null,
+        // `quoted` — forma quando populado não verificada ao vivo.
+        replyToProviderMessageId: str(m.quoted) || null,
         fallbackLabel: 'interactive',
       },
     }
   }
 
   const contentType = contentTypeOf(m)
-  const text = str(m.text) || str(m.body) || str(m.caption) || null
 
   return {
     kind: 'message',
@@ -1770,13 +1884,16 @@ export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null
       providerMessageId,
       from,
       contactName,
-      sentAt: toDate(m.timestamp),
+      sentAt: toDate(m.messageTimestamp),
       contentType,
-      contentText: text,
+      // Legenda em mídia NÃO VERIFICADA AO VIVO (o teste real não tinha
+      // legenda) — `text` é o candidato mais plausível por consistência
+      // com a mensagem de texto, mas não confirmado.
+      contentText: textOf(m),
       // Mídia é resolvida pela rota (precisa de I/O). Task 5 preenche.
       mediaUrl: null,
       interactiveReplyId: null,
-      replyToProviderMessageId: str(m.quotedMessageId) || null,
+      replyToProviderMessageId: str(m.quoted) || null,
       fallbackLabel: contentType,
     },
   }
