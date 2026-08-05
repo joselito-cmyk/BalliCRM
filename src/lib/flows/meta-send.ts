@@ -47,10 +47,15 @@ import { supabaseAdmin } from './admin-client'
  * error handling already surfaces it.
  */
 function assertMetaConfig(config: { provider?: string | null; access_token?: string | null }): void {
-  if (config.provider !== 'meta' || !config.access_token) {
+  // Conta em outro provedor tentando um recurso exclusivo da Meta.
+  if (config.provider !== 'meta') {
     throw new Error(
       'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable for this account',
     )
+  }
+  // Conta É Meta, só está sem token — não tem nada a ver com provedor.
+  if (!config.access_token) {
+    throw new Error('WhatsApp not configured for this account')
   }
 }
 
@@ -69,10 +74,11 @@ function assertSendableConfig(config: {
   if (config.provider !== 'meta' && config.provider !== 'uazapi') {
     throw new Error(`Unknown WhatsApp provider "${config.provider}".`)
   }
+  // Conta Meta sem access_token é conta mal configurada, não conta em
+  // outro provedor — o texto tem que dizer isso. Mesma frase que
+  // automations/meta-send.ts e send-message.ts usam para o caso equivalente.
   if (config.provider === 'meta' && !config.access_token) {
-    throw new Error(
-      'WhatsApp is configured for a different provider (UAZAPI) — Meta sends are unavailable for this account',
-    )
+    throw new Error('WhatsApp not configured for this account')
   }
   if (config.provider === 'uazapi' && !config.uazapi_instance_token) {
     throw new Error('UAZAPI instance not configured for this account')

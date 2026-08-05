@@ -40,12 +40,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // A doc da comunidade diz que o payload é flat e ecoa `token`. Não
-  // verificamos isso ao vivo ainda — por isso aceitamos também `owner`
-  // (número da própria instância) como chave alternativa, e logamos as
-  // duas para a Task 4 saber qual existe de verdade.
+  // O `token` é a ÚNICA chave de roteamento aceita. As três capturas
+  // reais mostram que ele vem sempre na raiz do payload
+  // (`routedBy: "token"` em todas) — ver a doc de payloads. Existiu aqui
+  // um fallback por `owner` (o número conectado da instância), de quando
+  // ainda não sabíamos se `token` vinha mesmo; como `owner` é o telefone
+  // comercial PÚBLICO da conta e esta rota não tem verificação de
+  // assinatura nem passa pelo middleware de auth, esse fallback permitia
+  // a qualquer um injetar mensagens de entrada falsas. Removido.
+  // Não reintroduzir nenhum fallback: sem token que case, é 404.
   const token = typeof body.token === 'string' ? body.token : null
-  const owner = typeof body.owner === 'string' ? body.owner : null
 
   let accountId: string | null = null
   let configOwnerUserId: string | null = null
@@ -58,22 +62,12 @@ export async function POST(request: Request) {
     accountId = data?.account_id ?? null
     configOwnerUserId = data?.user_id ?? null
   }
-  if (!accountId && owner) {
-    const { data } = await supabaseAdmin()
-      .from('whatsapp_config')
-      .select('account_id, user_id')
-      .eq('provider', 'uazapi')
-      .eq('uazapi_connected_phone', owner)
-      .maybeSingle()
-    accountId = data?.account_id ?? null
-    configOwnerUserId = data?.user_id ?? null
-  }
 
   // Log de captura, reduzido agora que a Task 4 interpreta a mensagem.
   // Nunca imprime o token — só se ele veio e se casou.
   console.log('[uazapi/webhook] payload recebido', JSON.stringify({
     matchedAccount: accountId,
-    routedBy: accountId ? (token ? 'token' : 'owner') : 'none',
+    routedBy: accountId ? 'token' : 'none',
     hasToken: token !== null,
     topLevelKeys: Object.keys(body),
   }))

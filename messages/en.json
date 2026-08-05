@@ -1522,7 +1522,7 @@
         "switchFromMetaConfirm": "This account is already connected to the official Meta API. Saving an instance token will disconnect it and permanently erase the stored Meta credentials — you would have to enter them again to go back. Continue?",
         "retry": "Try again",
         "limitationsTitle": "What this connection can't do",
-        "limitationsBody": "Meta-approved templates, button messages, broadcasts and reactions are Official API features and don't work over QR Code. Text and media work normally."
+        "limitationsBody": "Meta-approved templates, button messages, broadcasts and reactions are Official API features and don't work over QR Code. Replying to quote a message doesn't keep the quote for the recipient either. Text and media work normally."
       }
     },
     "sections": {

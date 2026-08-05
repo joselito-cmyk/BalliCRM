@@ -71,6 +71,8 @@ export interface ProviderSendMediaArgs {
   caption?: string
   /** Meta-only (document filename). Ignored for UAZAPI, which has no equivalent field. */
   filename?: string
+  /** Meta-only: quotes a prior message. Ignored for UAZAPI (sem equivalente na v2)
+   *  — a limitação está anunciada no card de limitações das Configurações. */
   contextMessageId?: string
 }
 

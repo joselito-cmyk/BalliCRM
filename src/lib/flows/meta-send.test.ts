@@ -73,9 +73,16 @@ describe('flows engineSendText — provider guard', () => {
     expect(sendTextMessage).not.toHaveBeenCalled()
   })
 
+  // Linha meta sem access_token é uma conta Meta mal configurada — nada a ver
+  // com "outro provedor". A mensagem tem que dizer isso (antes acusava UAZAPI,
+  // confundindo quem lesse o log), e igual à de automations/send-message.
   it('falha com mensagem legível (não TypeError) numa linha meta com access_token null', async () => {
     configRow = { id: 'cfg-1', provider: 'meta', access_token: null }
-    await expect(engineSendText(args)).rejects.toThrow(/different provider/i)
+    await expect(engineSendText(args)).rejects.toThrow(/WhatsApp not configured/i)
+    await engineSendText(args).catch((e: unknown) => {
+      expect(e).toBeInstanceOf(Error)
+      expect((e as Error).message).not.toMatch(/different provider/i)
+    })
   })
 
   it('roteia texto para UAZAPI em engineSendText', async () => {

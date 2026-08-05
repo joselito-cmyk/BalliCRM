@@ -1512,7 +1512,7 @@
         "switchFromMetaConfirm": "Esta conta já está conectada à API Oficial da Meta. Salvar um Instance Token vai desconectá-la e apagar as credenciais da Meta definitivamente — para voltar você precisará cadastrá-las de novo. Continuar?",
         "retry": "Tentar de novo",
         "limitationsTitle": "O que não funciona nesta conexão",
-        "limitationsBody": "Modelos aprovados pela Meta, mensagens com botões, disparos em massa e reações são recursos da API oficial e não funcionam por QR Code. Texto e mídia funcionam normalmente."
+        "limitationsBody": "Modelos aprovados pela Meta, mensagens com botões, disparos em massa e reações são recursos da API oficial e não funcionam por QR Code. Responder citando uma mensagem também não preserva a citação para quem recebe. Texto e mídia funcionam normalmente."
       }
     },
     "sections": {

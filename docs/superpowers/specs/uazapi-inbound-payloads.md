@@ -26,6 +26,15 @@ Confirma o desenho: **flat, com `token` no nível raiz** — o roteamento por
 `sha256(token)` contra `uazapi_instance_token_hash` funcionou exatamente como
 esperado (`routedBy: "token"` nas três capturas).
 
+⚠️ **`owner` NUNCA pode ser usado como chave de roteamento.** É o telefone
+comercial público da conta, e a rota do webhook não tem verificação de
+assinatura nem passa pelo middleware de auth — rotear por `owner` deixaria
+qualquer um que saiba o número injetar mensagens de entrada falsas (contato e
+conversa criados, automações disparadas, e até um envio real de resposta da IA
+para um número escolhido pelo atacante). Existiu um fallback assim enquanto não
+sabíamos se `token` vinha mesmo; as três capturas provaram que vem sempre, e o
+fallback foi removido. Token que não casa ⇒ 404, sem fallback nenhum.
+
 ## `chat` (irrelevante para o parser — contexto only)
 
 Objeto grande (~40 campos) com estado agregado da conversa: `name`,
@@ -173,5 +182,20 @@ confirmou o pipeline completo, não só a captura de payload:
 - Forma de `quoted` quando há resposta a uma mensagem anterior.
 - Forma de `reaction`/`messageType` quando é uma reação de verdade.
 - Payload do evento `connection` (só `messages` foi capturado).
-- Mensagem de documento e de localização (só texto, imagem e áudio testados).
+- Mensagem de documento (só texto, imagem e áudio testados).
+- **Mensagem de localização — hoje renderiza um PLACEHOLDER, não o conteúdo
+  real.** Nenhum payload de localização foi capturado, então não sabemos os
+  nomes dos campos de latitude/longitude/endereço (`content` vem como objeto,
+  e `textOf` só lê string). Para a bolha não ficar em branco na Caixa de
+  Entrada, `parseUazapiInbound` grava `content_text = "[location]"` e
+  `media_url = null`. Isso é uma decisão deliberada: chutar nomes de campo
+  seria repetir o erro que este projeto evitou o tempo todo. Quem capturar um
+  payload real de localização deve trocar o placeholder por um parser de
+  verdade — montando `nome - endereço - lat,lng`, como o caminho da Meta faz
+  (`parseMessageContent`, case `'location'`, em
+  `src/app/api/whatsapp/webhook/route.ts`) — e atualizar esta seção.
 - Envio de mídia pelo CRM (só envio de texto foi testado ao vivo nesta rodada).
+- Preservação da citação (reply/quote) no ENVIO pela UAZAPI: `contextMessageId`
+  é aceito pela camada de provedor mas descartado no caminho UAZAPI (sem
+  equivalente na API v2). A limitação está anunciada no card de limitações das
+  Configurações.

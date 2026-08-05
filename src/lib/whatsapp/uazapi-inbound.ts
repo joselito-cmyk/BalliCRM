@@ -140,6 +140,23 @@ export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null
 
   const contentType = contentTypeOf(m)
 
+  // Localização: `content` vem como objeto, então `textOf` devolve null e a
+  // mensagem cairia na caixa de entrada como uma bolha em branco (sem texto
+  // e sem mídia — a rota também não monta mediaUrl para location).
+  //
+  // PLACEHOLDER DELIBERADO: nenhum payload real de localização da UAZAPI foi
+  // capturado até hoje, então não sabemos os nomes dos campos de lat/lng/
+  // endereço. Chutar nomes de campo é exatamente o erro que este projeto
+  // evitou o tempo todo — preferimos um rótulo honesto a um parser inventado.
+  // Quem capturar um payload real de localização deve trocar isto por um
+  // parser de verdade, montando `nome - endereço - lat,lng` como o caminho
+  // da Meta faz (ver o case 'location' em
+  // src/app/api/whatsapp/webhook/route.ts) e atualizar
+  // docs/superpowers/specs/uazapi-inbound-payloads.md.
+  const text = textOf(m)
+  const contentText =
+    text ?? (contentType === 'location' ? `[${contentType}]` : null)
+
   return {
     kind: 'message',
     message: {
@@ -151,7 +168,7 @@ export function parseUazapiInbound(payload: unknown): ParsedUazapiInbound | null
       // Legenda em mídia NÃO VERIFICADA AO VIVO (o teste real não tinha
       // legenda) — `text` é o candidato mais plausível por consistência
       // com a mensagem de texto, mas não confirmado.
-      contentText: textOf(m),
+      contentText,
       // Mídia é resolvida pela rota (precisa de I/O). Task 5 preenche.
       mediaUrl: null,
       interactiveReplyId: null,

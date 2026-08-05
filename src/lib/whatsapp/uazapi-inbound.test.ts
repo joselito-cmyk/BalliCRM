@@ -159,4 +159,33 @@ describe('parseUazapiInbound', () => {
     expect(r.message.interactiveReplyId).toBe('opt-a')
     expect(r.message.contentText).toBe('Sim')
   })
+
+  // Nenhum payload real de localização foi capturado, então o parser NÃO
+  // tenta ler lat/lng/endereço (chutar nomes de campo é o erro que este
+  // projeto evitou o tempo todo). O contrato aqui é só: a bolha nunca fica
+  // em branco. Quem capturar um payload real deve trocar isto por asserções
+  // sobre o conteúdo de verdade.
+  it('usa um placeholder rotulado para localização (forma real ainda não capturada)', () => {
+    const r = parseUazapiInbound({
+      ...textPayload,
+      message: {
+        ...textPayload.message,
+        type: 'location',
+        mediaType: '',
+        messageType: 'LocationMessage',
+        text: '',
+        content: { algumCampoDesconhecido: 1 },
+      },
+    })
+    if (r?.kind !== 'message') throw new Error('esperava message')
+    expect(r.message.contentType).toBe('location')
+    expect(r.message.contentText).toBe('[location]')
+    expect(r.message.mediaUrl).toBeNull()
+  })
+
+  it('não aplica o placeholder de localização a outros tipos sem texto', () => {
+    const r = parseUazapiInbound(imagePayload)
+    if (r?.kind !== 'message') throw new Error('esperava message')
+    expect(r.message.contentText).toBeNull()
+  })
 })
