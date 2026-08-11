@@ -78,7 +78,30 @@ export async function POST(request: Request) {
 
   const parsed = parseUazapiInbound(body)
   if (!parsed) {
-    // Evento que não é mensagem (connection), eco nosso, ou grupo.
+    // Eco da nossa própria mensagem ou grupo (EventType 'messages', mas
+    // filtrado pelo parser) não vale registrar — é tráfego normal e
+    // frequente. Qualquer outro EventType (ex. 'connection') é o que a
+    // UAZAPI não guarda histórico nenhum do lado dela (confirmado com o
+    // suporte deles): é a única evidência de queda que vamos ter, então
+    // persistimos o corpo bruto — a forma desse payload nunca foi
+    // capturada ao vivo, então não tentamos tipar campos que não
+    // confirmamos (ver docs/superpowers/specs/uazapi-inbound-payloads.md).
+    const eventType = typeof body.EventType === 'string' ? body.EventType : null
+    if (eventType && eventType !== 'messages') {
+      const redacted: Record<string, unknown> = { ...body }
+      delete redacted.token
+      after(async () => {
+        try {
+          await supabaseAdmin().from('whatsapp_connection_events').insert({
+            account_id: accountId,
+            event_type: eventType,
+            payload: redacted,
+          })
+        } catch (error) {
+          console.error('[uazapi/webhook] failed to log connection event:', error)
+        }
+      })
+    }
     return NextResponse.json({ status: 'ignored' }, { status: 200 })
   }
 

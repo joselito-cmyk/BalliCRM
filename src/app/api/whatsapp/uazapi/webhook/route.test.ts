@@ -21,10 +21,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 let configRow: Record<string, unknown> | null = null
 /** Filtros aplicados na query, para provar por qual coluna a rota roteou. */
 let filters: Array<[string, unknown]> = []
+/** Linhas inseridas via admin client, com a tabela de destino. */
+let inserted: Array<{ table: string; row: Record<string, unknown> }> = []
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
-    from: () => {
+    from: (table: string) => {
       const b: Record<string, unknown> = {}
       b.select = vi.fn(() => b)
       b.eq = vi.fn((col: string, val: unknown) => {
@@ -32,6 +34,10 @@ vi.mock('@supabase/supabase-js', () => ({
         return b
       })
       b.maybeSingle = vi.fn(async () => ({ data: configRow, error: null }))
+      b.insert = vi.fn(async (row: Record<string, unknown>) => {
+        inserted.push({ table, row })
+        return { data: null, error: null }
+      })
       return b
     },
   }),
@@ -118,6 +124,7 @@ function imagePayload(messageid: string, overrides: Record<string, unknown> = {}
 beforeEach(() => {
   configRow = { account_id: 'acct-1', user_id: 'user-1' }
   filters = []
+  inserted = []
   pending.length = 0
   processInboundMessage.mockClear()
   processInboundReaction.mockClear()
@@ -225,6 +232,33 @@ describe('POST /api/whatsapp/uazapi/webhook — eventos ignorados', () => {
     expect(body).toEqual({ status: 'ignored' })
     expect(processInboundMessage).not.toHaveBeenCalled()
     expect(processInboundReaction).not.toHaveBeenCalled()
+  })
+
+  it('registra evento de connection em whatsapp_connection_events, sem o token', async () => {
+    await post({
+      BaseUrl: 'https://balligroup.uazapi.com',
+      EventType: 'connection',
+      instanceName: 'Novo Rio',
+      owner: '5521984379771',
+      token: TOKEN,
+    })
+    await Promise.all(pending)
+
+    expect(inserted).toHaveLength(1)
+    expect(inserted[0].table).toBe('whatsapp_connection_events')
+    expect(inserted[0].row).toMatchObject({
+      account_id: 'acct-1',
+      event_type: 'connection',
+    })
+    expect(inserted[0].row.payload).not.toHaveProperty('token')
+    expect(inserted[0].row.payload).toMatchObject({ instanceName: 'Novo Rio' })
+  })
+
+  it('não registra nada para o eco da própria mensagem (EventType "messages", mas filtrado)', async () => {
+    await post(imagePayload('ECO-1', { fromMe: true }))
+    await Promise.all(pending)
+
+    expect(inserted).toHaveLength(0)
   })
 
   it('responde 400 para corpo que não é JSON', async () => {
